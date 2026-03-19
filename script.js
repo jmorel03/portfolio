@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const form = document.getElementById('login-form');
   const code = document.getElementById('code');
   const message = document.getElementById('message');
-  const CORRECT_CODE = '1234';
+  const CORRECT_CODE = '4321';
 
   function showMessage(text, isError=true){
     message.textContent = text;
