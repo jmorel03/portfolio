@@ -6,6 +6,21 @@
     <title>Document</title>
 </head>
 <body>
-    Home Page Test
+    <main style="max-width:520px;margin:40px auto;padding:1.2rem;border:1px solid #ccd; border-radius:10px;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; text-align:center;">
+      <h1>Welcome to the main page</h1>
+      <p>You are authenticated.</p>
+      <button id="logoutBtn" style="margin-top:1rem;padding:.75rem 1.2rem;border:none;border-radius:8px;background:#ef4444;color:#fff;font-weight:700;cursor:pointer;">Logout</button>
+      <div id="logoutMessage" style="margin-top:1rem;color:#d14343;"></div>
+    </main>
+    <script>
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        const res = await fetch('/api/logout', { method: 'POST' });
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          document.getElementById('logoutMessage').textContent = 'Logout failed. Please refresh and try again.';
+        }
+      });
+    </script>
 </body>
 </html>

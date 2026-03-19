@@ -1,0 +1,11 @@
+name = "portfolio-auth"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[env.production]
+  route = "yourdomain.com/*"
+  zone_id = "<YOUR_ZONE_ID>"
+
+[vars]
+  AUTH_CODE = "1234"
+  SESSION_SECRET = "super-secret-random-key-change-this"
