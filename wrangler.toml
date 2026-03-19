@@ -4,7 +4,7 @@ compatibility_date = "2026-01-01"
 
 [env.production]
   route = "jonathanreyesmorel.com/"
-  zone_id = "<YOUR_ZONE_ID>"
+  zone_id = "night.jonathanmorel-249.workers.dev"
 
 [vars]
   AUTH_CODE = "3212"
