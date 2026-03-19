@@ -3,9 +3,9 @@ main = "worker.js"
 compatibility_date = "2026-01-01"
 
 [env.production]
-  route = "yourdomain.com/*"
+  route = "jonathanreyesmorel.com/"
   zone_id = "<YOUR_ZONE_ID>"
 
 [vars]
-  AUTH_CODE = "1234"
-  SESSION_SECRET = "super-secret-random-key-change-this"
+  AUTH_CODE = "3212"
+  SESSION_SECRET = "Crimson-falcon-dances-under-silent-moons-while-emerald-rivers-whisper-secrets"
