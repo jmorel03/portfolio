@@ -3,8 +3,8 @@ main = "worker.js"
 compatibility_date = "2026-01-01"
 
 [env.production]
-  route = "jonathanreyesmorel.com/"
-  zone_id = "night.jonathanmorel-249.workers.dev"
+  route = "jonathanreyesmorel.com/*"
+  zone_id = "6c0f4f5dabc5cfebca779b9f631a8e10"
 
 [vars]
   AUTH_CODE = "3212"
