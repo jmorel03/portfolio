@@ -9,20 +9,16 @@
 <body>
   <main class="container">
     <section class="card" aria-labelledby="login-heading">
-      <h1 id="login-heading">Welcome back</h1>
-      <p class="lead">Sign in to continue to your account</p>
+      <h1 id="login-heading">Access Code</h1>
+      <p class="lead">Enter your 4-digit code to continue</p>
 
       <form id="login-form" class="login-form" novalidate>
-        <label for="username">Username</label>
-        <input id="username" name="username" type="text" required autocomplete="username">
-
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" required autocomplete="current-password">
-
+        <label for="code">4-Digit Code</label>
+        <input id="code" name="code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off" placeholder="••••">
 
         <div id="message" role="status" class="message" aria-live="polite"></div>
 
-        <button type="submit" class="btn">Sign in</button>
+        <button type="submit" class="btn">Unlock</button>
       </form>
     </section>
   </main>

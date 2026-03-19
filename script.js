@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded',()=>{
   const form = document.getElementById('login-form');
-  const username = document.getElementById('username');
-  const password = document.getElementById('password');
+  const code = document.getElementById('code');
   const message = document.getElementById('message');
+  const CORRECT_CODE = '1234';
 
   function showMessage(text, isError=true){
     message.textContent = text;
@@ -10,13 +10,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 
   function validate(){
-    const e = username.value.trim();
-    const p = password.value;
-    if(!e) { showMessage('Please enter your username.'); username.focus(); return false }
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if(!re.test(e)){ showMessage('Please enter a valid username address.'); username.focus(); return false }
-    if(!p) { showMessage('Please enter your password.'); password.focus(); return false }
-    if(p.length < 6){ showMessage('Password must be at least 6 characters.'); password.focus(); return false }
+    const inputCode = code.value.trim();
+    if(!inputCode) { showMessage('Please enter the 4-digit code.'); code.focus(); return false }
+    if(!/^\d{4}$/.test(inputCode)){ showMessage('Code must be exactly 4 digits.'); code.focus(); return false }
+    if(inputCode !== CORRECT_CODE){ showMessage('Incorrect code. Try again.'); code.value = ''; code.focus(); return false }
     return true
   }
 
@@ -25,16 +22,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     message.textContent = '';
     if(!validate()) return;
 
-    // Demo: simulate login
+    // Successful login - redirect to main page
     const btn = form.querySelector('.btn');
     btn.disabled = true;
-    btn.textContent = 'Signing in...';
+    btn.textContent = 'Unlocking...';
 
     setTimeout(()=>{
-      btn.disabled = false;
-      btn.textContent = 'Sign in';
-      showMessage('Signed in successfully — welcome!', false);
-      form.reset();
-    }, 900);
+      // Set session flag and redirect
+      sessionStorage.setItem('authenticated', 'true');
+      window.location.href = 'pages/main.html';
+    }, 600);
   });
 });
