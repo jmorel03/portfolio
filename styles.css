@@ -1,0 +1,25 @@
+:root{
+  --bg:#f3f6fb;
+  --card:#ffffff;
+  --accent:#3b82f6;
+  --muted:#6b7280;
+  --danger:#ef4444;
+}
+*{box-sizing:border-box}
+body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:linear-gradient(180deg,var(--bg),#eaf2ff);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.container{width:100%;max-width:420px}
+.card{background:var(--card);padding:28px;border-radius:12px;box-shadow:0 6px 24px rgba(16,24,40,0.08);}
+h1{margin:0 0 6px;font-size:1.5rem}
+.lead{margin:0 0 18px;color:var(--muted);font-size:0.95rem}
+.login-form{display:flex;flex-direction:column;gap:10px}
+label{font-size:0.85rem;color:var(--muted)}
+input[type="email"],input[type="password"]{padding:12px 14px;border:1px solid #e6edf8;border-radius:8px;font-size:1rem}
+.options{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.checkbox{font-size:0.9rem;color:var(--muted)}
+.forgot{font-size:0.9rem;color:var(--accent);text-decoration:none}
+.message{min-height:20px;font-size:0.9rem;color:var(--danger);margin-top:6px}
+.btn{margin-top:8px;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+.signup{margin-top:14px;text-align:center;color:var(--muted);font-size:0.9rem}
+.signup a{color:var(--accent);text-decoration:none}
+
+@media (max-width:420px){.card{padding:20px}}

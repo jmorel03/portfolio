@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="container">
+    <section class="card" aria-labelledby="login-heading">
+      <h1 id="login-heading">Welcome back</h1>
+      <p class="lead">Sign in to continue to your account</p>
+
+      <form id="login-form" class="login-form" novalidate>
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" required autocomplete="username">
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+
+
+        <div id="message" role="status" class="message" aria-live="polite"></div>
+
+        <button type="submit" class="btn">Sign in</button>
+      </form>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
