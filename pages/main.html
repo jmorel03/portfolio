@@ -4,15 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
+    <style>
+        .account-menu {
+            position: absolute;
+            top: 40px;
+            right: 0;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .account-menu button {
+            display: block;
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+        }
+        .account-menu button:hover {
+            background: #f0f0f0;
+        }
+    </style>
 </head>
 <body>
-    <main style="max-width:520px;margin:40px auto;padding:1.2rem;border:1px solid #ccd; border-radius:10px;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; text-align:center;">
+    <header style="position: fixed; top: 10px; right: 10px;">
+        <button id="accountBtn" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer;">Account</button>
+        <div id="accountMenu" class="account-menu">
+            <button id="settingsBtn">Account Settings</button>
+            <button id="logoutBtn">Logout</button>
+        </div>
+    </header>
+    <main style="max-width:520px;margin:80px auto 40px;padding:1.2rem;border:1px solid #ccd; border-radius:10px;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; text-align:center;">
       <h1>Welcome to the main page</h1>
       <p>You are authenticated.</p>
-      <button id="logoutBtn" style="margin-top:1rem;padding:.75rem 1.2rem;border:none;border-radius:8px;background:#ef4444;color:#fff;font-weight:700;cursor:pointer;">Logout</button>
       <div id="logoutMessage" style="margin-top:1rem;color:#d14343;"></div>
     </main>
     <script>
+      document.getElementById('accountBtn').addEventListener('click', () => {
+        const menu = document.getElementById('accountMenu');
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+      });
+
       document.getElementById('logoutBtn').addEventListener('click', async () => {
         const res = await fetch('/api/logout', { method: 'POST' });
         if (res.ok) {
@@ -20,6 +55,10 @@
         } else {
           document.getElementById('logoutMessage').textContent = 'Logout failed. Please refresh and try again.';
         }
+      });
+
+      document.getElementById('settingsBtn').addEventListener('click', () => {
+        alert('Account settings page not implemented yet.');
       });
     </script>
 </body>
