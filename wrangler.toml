@@ -4,4 +4,4 @@ compatibility_date = "2026-01-01"
 
 [env.production]
   route = "jonathanreyesmorel.com/*"
-  vars = { AUTH_CODE = "8522", SESSION_SECRET = "Crimson-falcon-dances-under-silent-moons-while-emerald-rivers-whisper-secrets" }
+  vars = { AUTH_CODE = "0308", SESSION_SECRET = "Crimson-falcon-dances-under-silent-moons-while-emerald-rivers-whisper-secrets" }
