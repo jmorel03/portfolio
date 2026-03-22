@@ -41,6 +41,30 @@ function sanitizeFileName(fileName) {
 
 const PORTFOLIO_DATA_KEY = 'portfolio:data:v1';
 const FILE_KEY_PREFIX = 'file:';
+const AUTH_CODE_KEY = 'auth:code:v1';
+
+async function getAuthCode(env) {
+  const fallback = env.AUTH_CODE || '1234';
+
+  if (!env.PORTFOLIO_KV) {
+    return fallback;
+  }
+
+  const savedCode = await env.PORTFOLIO_KV.get(AUTH_CODE_KEY);
+  if (savedCode && /^\d{4}$/.test(savedCode)) {
+    return savedCode;
+  }
+
+  return fallback;
+}
+
+async function setAuthCode(env, code) {
+  if (!env.PORTFOLIO_KV) {
+    throw new Error('KV binding missing');
+  }
+
+  await env.PORTFOLIO_KV.put(AUTH_CODE_KEY, code);
+}
 
 async function loadPortfolioData(env) {
   if (!env.PORTFOLIO_KV) {
@@ -150,7 +174,9 @@ export default {
       if (!/^\d{4}$/.test(code)) {
         return new Response(JSON.stringify({ ok: false, error: 'Code must be 4 digits' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
-      if (code !== (env.AUTH_CODE || '1234')) {
+
+      const authCode = await getAuthCode(env);
+      if (code !== authCode) {
         return new Response(JSON.stringify({ ok: false, error: 'Invalid code' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
       }
       const token = await createToken(env.SESSION_SECRET || 'default-session-secret', 1800);
@@ -190,12 +216,13 @@ export default {
           return new Response(JSON.stringify({ error: 'New codes do not match' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
 
-        if (currentCode !== (env.AUTH_CODE || '1234')) {
+        const authCode = await getAuthCode(env);
+        if (currentCode !== authCode) {
           return new Response(JSON.stringify({ error: 'Current code is incorrect' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Note: On Cloudflare Workers, you would need to use KV storage or Durable Objects to persist the new code
-        // For now, this validates and returns success
+        await setAuthCode(env, newCode);
+
         return new Response(JSON.stringify({ ok: true, message: 'Access code updated successfully' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       } catch (error) {
         return new Response(JSON.stringify({ error: 'Failed to process request' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
