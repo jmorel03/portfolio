@@ -1152,17 +1152,29 @@
       }
 
       async function deleteFileKeysFromR2(fileKeys) {
-        if (!Array.isArray(fileKeys) || fileKeys.length === 0) return;
+        if (!Array.isArray(fileKeys) || fileKeys.length === 0) return true;
 
         try {
-          await fetch('/api/files/batch-delete', {
+          const response = await fetch('/api/files/batch-delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ fileKeys })
           });
+
+          if (!response.ok) {
+            return false;
+          }
+
+          const result = await response.json().catch(() => null);
+          if (!result || !result.ok) {
+            return false;
+          }
+
+          return true;
         } catch (error) {
           console.error('Failed to delete files from R2:', error);
+          return false;
         }
       }
 
@@ -1170,11 +1182,14 @@
         if (selectedFolderIndex !== -1) {
           const targetFolder = folders[selectedFolderIndex];
           const fileKeys = collectFileKeys(targetFolder?.files || []);
-          await deleteFileKeysFromR2(fileKeys);
+          const deletedFromR2 = await deleteFileKeysFromR2(fileKeys);
 
           folders.splice(selectedFolderIndex, 1);
           saveDataToServer();
           renderFolders();
+          if (!deletedFromR2 && fileKeys.length > 0) {
+            alert('Folder was removed, but some files could not be deleted from R2 storage.');
+          }
           contextMenu.style.display = 'none';
           selectedFolderIndex = -1;
         }
@@ -1186,11 +1201,14 @@
           const fileKeys = Array.isArray(targetItem?.files)
             ? collectFileKeys(targetItem.files)
             : collectFileKeys([targetItem]);
-          await deleteFileKeysFromR2(fileKeys);
+          const deletedFromR2 = await deleteFileKeysFromR2(fileKeys);
 
           folders[currentFolderIndex].files.splice(selectedFileIndex, 1);
           saveDataToServer();
           renderFiles();
+          if (!deletedFromR2 && fileKeys.length > 0) {
+            alert('Item was removed, but the file could not be deleted from R2 storage.');
+          }
           fileContextMenu.style.display = 'none';
           selectedFileIndex = -1;
         }
