@@ -651,7 +651,7 @@
           left: 50%;
           bottom: 24px;
           transform: translateX(-50%) translateY(16px);
-          background: rgba(229, 62, 62, 0.95);
+          background: rgba(45, 55, 72, 0.95);
           color: white;
           padding: 12px 16px;
           border-radius: 10px;
@@ -667,6 +667,14 @@
         #toast.show {
           opacity: 1;
           transform: translateX(-50%) translateY(0);
+        }
+
+        #toast.success {
+          background: rgba(56, 161, 105, 0.95);
+        }
+
+        #toast.error {
+          background: rgba(229, 62, 62, 0.95);
         }
         
         .file-item .name {
@@ -910,9 +918,11 @@
       let selectedFileIndex = -1;
       let toastTimeout;
 
-      function showToast(message) {
+      function showToast(message, type = 'error') {
         if (!toast) return;
         toast.textContent = message;
+        toast.classList.remove('success', 'error');
+        toast.classList.add(type === 'success' ? 'success' : 'error');
         toast.classList.add('show');
         clearTimeout(toastTimeout);
         toastTimeout = setTimeout(() => {
@@ -1226,6 +1236,8 @@
           renderFolders();
           if (!deletedFromR2 && fileKeys.length > 0) {
             showToast('Folder removed, but some files could not be deleted from R2 storage.');
+          } else if (deletedFromR2 && fileKeys.length > 0) {
+            showToast('Folder removed and linked files were deleted from R2.', 'success');
           }
           contextMenu.style.display = 'none';
           selectedFolderIndex = -1;
@@ -1245,6 +1257,8 @@
           renderFiles();
           if (!deletedFromR2 && fileKeys.length > 0) {
             showToast('Item removed, but the file could not be deleted from R2 storage.');
+          } else if (deletedFromR2 && fileKeys.length > 0) {
+            showToast('Item removed and linked file was deleted from R2.', 'success');
           }
           fileContextMenu.style.display = 'none';
           selectedFileIndex = -1;
