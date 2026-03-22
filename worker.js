@@ -34,7 +34,7 @@ const CSS = `:root{--bg:#f3f6fb;--card:#ffffff;--accent:#3b82f6;--muted:#6b7280;
 
 const LOGIN_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Login</title><style>${CSS}</style></head><body><main class="container"><section class="card" aria-labelledby="login-heading"><h1 id="login-heading">Access Code</h1><p class="lead">Enter your 4-digit code to continue</p><form id="login-form" class="login-form" novalidate><label for="code">4-Digit Code</label><input id="code" name="code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off" placeholder="••••"><div id="message" role="status" class="message" aria-live="polite"></div><button type="submit" class="btn">Unlock</button></form></section></main><script>${`document.addEventListener('DOMContentLoaded', ()=>{const form = document.getElementById('login-form');const code = document.getElementById('code');const message = document.getElementById('message');function showMessage(text, isError=true){message.textContent = text;message.style.color = isError ? getComputedStyle(document.documentElement).getPropertyValue('--danger') : '#0f5132';}function validate(){const inputCode = code.value.trim();if (!inputCode) { showMessage('Please enter the 4-digit code.'); code.focus(); return false; }if (!/^\\d{4}$/.test(inputCode)) { showMessage('Code must be exactly 4 digits.'); code.focus(); return false; }return true;}form.addEventListener('submit', async (ev)=>{ev.preventDefault();message.textContent = '';if (!validate()) return;const btn = form.querySelector('.btn');btn.disabled = true;btn.textContent = 'Verifying...';try {const response = await fetch('/api/login', {method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify({ code: code.value.trim() })});const result = await response.json();if (result.ok) {window.location.href = '/pages/main.html';} else {showMessage(result.error || 'Login failed.');code.value = '';code.focus();}} catch (error) {showMessage('Network error, try again.');console.error(error);} finally {btn.disabled = false;btn.textContent = 'Unlock';}});});`}</script></body></html>`;
 
-const MAIN_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Main</title><style>body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#f3f6fb,#eaf2ff);min-height:100vh;display:flex;align-items:center;justify-content:center;}</style></head><body><main style="max-width:520px;margin:40px auto;padding:1.2rem;border:1px solid #ccd; border-radius:10px;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; text-align:center;"><h1>Welcome to the main page</h1><p>You are authenticated.</p><button id="logoutBtn" style="margin-top:1rem;padding:.75rem 1.2rem;border:none;border-radius:8px;background:#ef4444;color:#fff;font-weight:700;cursor:pointer;">Logout</button><div id="logoutMessage" style="margin-top:1rem;color:#d14343;"></div></main><script>document.getElementById('logoutBtn').addEventListener('click', async () => {const res = await fetch('/api/logout', { method: 'POST' });if (res.ok) {window.location.href = '/';} else {document.getElementById('logoutMessage').textContent = 'Logout failed. Please refresh and try again.';}});</script></body></html>`;
+
 
 export default {
   async fetch(request, env) {
@@ -121,11 +121,71 @@ export default {
       if (!valid) {
         return Response.redirect(`${new URL(request.url).origin}/`, 302);
       }
-      return new Response(MAIN_HTML, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      // Serve the latest main.html from your repo
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/main.html')
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (html) {
+            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          } else {
+            return new Response('main.html not found', { status: 404 });
+          }
+        });
+    }
+    if (path === '/pages/settings.html') {
+      const cookie = request.headers.get('Cookie') || '';
+      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
+      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      if (!valid) {
+        return Response.redirect(`${new URL(request.url).origin}/`, 302);
+      }
+      // Serve the latest settings.html from your repo
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/settings.html')
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (html) {
+            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          } else {
+            return new Response('settings.html not found', { status: 404 });
+          }
+        });
     }
 
-    if (path === '/' || path === '') {
-      return new Response(LOGIN_HTML, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    if (path === '/' || path === '/index.html') {
+      // Serve the latest index.html from your repo
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/index.html')
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (html) {
+            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          } else {
+            return new Response('index.html not found', { status: 404 });
+          }
+        });
+    }
+
+    // Serve static assets
+    if (path === '/styles.css') {
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/styles.css')
+        .then(r => r.ok ? r.text() : null)
+        .then(css => {
+          if (css) {
+            return new Response(css, { status: 200, headers: { 'Content-Type': 'text/css; charset=utf-8' } });
+          } else {
+            return new Response('styles.css not found', { status: 404 });
+          }
+        });
+    }
+    if (path === '/script.js') {
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/script.js')
+        .then(r => r.ok ? r.text() : null)
+        .then(js => {
+          if (js) {
+            return new Response(js, { status: 200, headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
+          } else {
+            return new Response('script.js not found', { status: 404 });
+          }
+        });
     }
 
     return new Response('Not Found', { status: 404 });
