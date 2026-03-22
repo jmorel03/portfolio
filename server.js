@@ -10,12 +10,75 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 let AUTH_CODE = process.env.AUTH_CODE || '1234';
 let DELETE_PASSWORD_HASH = '';
+let ACCESS_USERS = [];
+const DELETE_PASSWORD_PEPPER = process.env.DELETE_PASSWORD_PEPPER || '';
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_SALT_BYTES = 16;
 
 const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
 const LOGIN_ACTIVITY_FILE = path.join(__dirname, 'data', 'login-activity.json');
 
-function hashPassword(value) {
+function timingSafeEqualHex(a, b) {
+  const aBuffer = Buffer.from(String(a), 'utf8');
+  const bBuffer = Buffer.from(String(b), 'utf8');
+  if (aBuffer.length !== bBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(aBuffer, bBuffer);
+}
+
+function hashPasswordLegacy(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function scryptAsync(password, salt, keylen) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, keylen, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(derivedKey);
+    });
+  });
+}
+
+async function hashPasswordSecure(value) {
+  const salt = crypto.randomBytes(SCRYPT_SALT_BYTES);
+  const material = `${String(value)}${DELETE_PASSWORD_PEPPER}`;
+  const derived = await scryptAsync(material, salt, SCRYPT_KEYLEN);
+  return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`;
+}
+
+async function verifyPasswordSecure(value, storedHash) {
+  if (!storedHash) {
+    return false;
+  }
+
+  if (storedHash.startsWith('scrypt$')) {
+    const parts = storedHash.split('$');
+    if (parts.length !== 3) {
+      return false;
+    }
+
+    const saltHex = parts[1];
+    const expectedHex = parts[2];
+    if (!saltHex || !expectedHex) {
+      return false;
+    }
+
+    const material = `${String(value)}${DELETE_PASSWORD_PEPPER}`;
+    const derived = await scryptAsync(material, Buffer.from(saltHex, 'hex'), SCRYPT_KEYLEN);
+    return timingSafeEqualHex(derived.toString('hex'), expectedHex);
+  }
+
+  // Legacy SHA-256 support for previously stored values
+  if (/^[a-f0-9]{64}$/i.test(storedHash)) {
+    const legacy = hashPasswordLegacy(String(value));
+    return timingSafeEqualHex(legacy, storedHash);
+  }
+
+  return false;
 }
 
 async function readConfig() {
@@ -56,6 +119,67 @@ async function appendLoginActivity(req) {
   await fs.writeFile(LOGIN_ACTIVITY_FILE, JSON.stringify(limited, null, 2));
 }
 
+const ROLE_LEVEL = {
+  viewer: 1,
+  editor: 2,
+  admin: 3
+};
+
+function normalizeRole(role) {
+  const value = String(role || '').toLowerCase();
+  return ROLE_LEVEL[value] ? value : 'viewer';
+}
+
+function normalizeAccessUsers(users, fallbackCode) {
+  if (!Array.isArray(users)) {
+    return [{ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' }];
+  }
+
+  const normalized = users
+    .map((user, index) => {
+      const code = String(user?.code || '').trim();
+      if (!/^\d{4}$/.test(code)) {
+        return null;
+      }
+
+      return {
+        id: String(user?.id || `user-${index + 1}`),
+        name: String(user?.name || `User ${index + 1}`),
+        code,
+        role: normalizeRole(user?.role)
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalized.some((user) => user.role === 'admin')) {
+    normalized.unshift({ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' });
+  }
+
+  return normalized.length > 0 ? normalized : [{ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' }];
+}
+
+function hasRole(actualRole, requiredRole) {
+  return (ROLE_LEVEL[normalizeRole(actualRole)] || 0) >= (ROLE_LEVEL[normalizeRole(requiredRole)] || Number.MAX_SAFE_INTEGER);
+}
+
+function sanitizeAccessUsersForAdmin(users) {
+  return (Array.isArray(users) ? users : []).map((user) => ({
+    id: user.id,
+    name: user.name,
+    role: normalizeRole(user.role)
+  }));
+}
+
+function generateUserId() {
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `user-${crypto.randomBytes(8).toString('hex')}`;
+}
+
+ACCESS_USERS = normalizeAccessUsers(null, AUTH_CODE);
+
 // Get last git commit info
 function getGitInfo() {
   try {
@@ -82,8 +206,23 @@ function getGitInfo() {
       DELETE_PASSWORD_HASH = config.DELETE_PASSWORD_HASH;
       console.log('Loaded delete password from config file');
     }
+
+    let sourceUsers = config.ACCESS_USERS;
+    if (!sourceUsers && process.env.ACCESS_USERS_JSON) {
+      try {
+        sourceUsers = JSON.parse(process.env.ACCESS_USERS_JSON);
+      } catch {
+        sourceUsers = null;
+      }
+    }
+
+    ACCESS_USERS = normalizeAccessUsers(sourceUsers, AUTH_CODE);
+    const adminUser = ACCESS_USERS.find((user) => user.role === 'admin');
+    if (adminUser?.code) {
+      AUTH_CODE = adminUser.code;
+    }
   } catch (error) {
-    
+    ACCESS_USERS = normalizeAccessUsers(null, AUTH_CODE);
   }
 })();
 
@@ -130,6 +269,20 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
 
+function requireRole(requiredRole) {
+  return (req, res, next) => {
+    if (!req.session?.authenticated) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    if (!hasRole(req.session?.role, requiredRole)) {
+      return res.status(403).json({ ok: false, error: 'Forbidden' });
+    }
+
+    return next();
+  };
+}
+
 // Version endpoint (public)
 app.get('/api/version', (req, res) => {
   const gitInfo = getGitInfo();
@@ -142,7 +295,8 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Code must be 4 digits' });
   }
 
-  if (code !== AUTH_CODE) {
+  const matchedUser = ACCESS_USERS.find((user) => user.code === code);
+  if (!matchedUser) {
     return res.status(401).json({ ok: false, error: 'Invalid code' });
   }
 
@@ -153,6 +307,9 @@ app.post('/api/login', async (req, res) => {
   }
 
   req.session.authenticated = true;
+  req.session.userId = matchedUser.id;
+  req.session.name = matchedUser.name;
+  req.session.role = matchedUser.role;
   return res.json({ ok: true });
 });
 
@@ -161,6 +318,65 @@ app.post('/api/logout', (req, res) => {
     res.clearCookie('connect.sid');
     res.json({ ok: true });
   });
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    user: {
+      id: req.session.userId,
+      name: req.session.name,
+      role: normalizeRole(req.session.role)
+    }
+  });
+});
+
+app.get('/api/access-users', requireRole('admin'), (req, res) => {
+  res.json({ ok: true, users: sanitizeAccessUsersForAdmin(ACCESS_USERS) });
+});
+
+app.post('/api/access-users', requireRole('admin'), async (req, res) => {
+  try {
+    const { name, code, role } = req.body || {};
+    const normalizedCode = String(code || '').trim();
+    const normalizedName = String(name || '').trim();
+    const normalizedRole = normalizeRole(role);
+
+    if (!normalizedName) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (!/^\d{4}$/.test(normalizedCode)) {
+      return res.status(400).json({ error: 'Code must be exactly 4 digits' });
+    }
+
+    if (ACCESS_USERS.some((user) => user.code === normalizedCode)) {
+      return res.status(409).json({ error: 'Code is already in use' });
+    }
+
+    ACCESS_USERS.push({
+      id: generateUserId(),
+      name: normalizedName,
+      code: normalizedCode,
+      role: normalizedRole
+    });
+
+    const adminUser = ACCESS_USERS.find((user) => user.role === 'admin');
+    AUTH_CODE = adminUser?.code || AUTH_CODE;
+
+    const config = await readConfig();
+    await writeConfig({
+      ...config,
+      AUTH_CODE,
+      DELETE_PASSWORD_HASH,
+      ACCESS_USERS
+    });
+
+    return res.json({ ok: true, users: sanitizeAccessUsersForAdmin(ACCESS_USERS) });
+  } catch (error) {
+    console.error('Error creating access user:', error);
+    return res.status(500).json({ error: 'Failed to create user' });
+  }
 });
 
 app.get('/pages/main.html', requireAuth, (req, res) => {
@@ -194,7 +410,7 @@ app.get('/api/data', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/data', requireAuth, async (req, res) => {
+app.post('/api/data', requireRole('editor'), async (req, res) => {
   try {
     const dataDir = path.join(__dirname, 'data');
     const dataFile = path.join(dataDir, 'portfolio.json');
@@ -217,7 +433,7 @@ app.post('/api/data', requireAuth, async (req, res) => {
 });
 
 // File upload endpoint
-app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
+app.post('/api/upload', requireRole('editor'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -259,7 +475,7 @@ app.get('/api/login-activity', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/delete-password', requireAuth, async (req, res) => {
+app.post('/api/delete-password', requireRole('admin'), async (req, res) => {
   try {
     const { currentPassword, newPassword, confirmPassword } = req.body || {};
 
@@ -280,17 +496,19 @@ app.post('/api/delete-password', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Current delete password is required' });
       }
 
-      if (hashPassword(String(currentPassword)) !== DELETE_PASSWORD_HASH) {
+      const validCurrentPassword = await verifyPasswordSecure(String(currentPassword), DELETE_PASSWORD_HASH);
+      if (!validCurrentPassword) {
         return res.status(401).json({ error: 'Current delete password is incorrect' });
       }
     }
 
-    DELETE_PASSWORD_HASH = hashPassword(String(newPassword));
+    DELETE_PASSWORD_HASH = await hashPasswordSecure(String(newPassword));
     const config = await readConfig();
     await writeConfig({
       ...config,
       AUTH_CODE,
-      DELETE_PASSWORD_HASH
+      DELETE_PASSWORD_HASH,
+      ACCESS_USERS
     });
 
     return res.json({ ok: true, message: 'Delete password updated successfully' });
@@ -300,7 +518,7 @@ app.post('/api/delete-password', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/data-all', requireAuth, async (req, res) => {
+app.delete('/api/data-all', requireRole('admin'), async (req, res) => {
   try {
     const { password } = req.body || {};
 
@@ -308,8 +526,21 @@ app.delete('/api/data-all', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Delete password is not set yet' });
     }
 
-    if (!password || hashPassword(String(password)) !== DELETE_PASSWORD_HASH) {
+    const validDeletePassword = await verifyPasswordSecure(String(password || ''), DELETE_PASSWORD_HASH);
+    if (!validDeletePassword) {
       return res.status(401).json({ error: 'Invalid delete password' });
+    }
+
+    // Upgrade legacy hash in-place after successful verification
+    if (!String(DELETE_PASSWORD_HASH).startsWith('scrypt$')) {
+      DELETE_PASSWORD_HASH = await hashPasswordSecure(String(password));
+      const config = await readConfig();
+      await writeConfig({
+        ...config,
+        AUTH_CODE,
+        DELETE_PASSWORD_HASH,
+        ACCESS_USERS
+      });
     }
 
     const dataFile = path.join(__dirname, 'data', 'portfolio.json');
@@ -344,19 +575,26 @@ app.post('/api/change-code', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'New codes do not match' });
     }
 
-    if (currentCode !== AUTH_CODE) {
+    const currentUser = ACCESS_USERS.find((user) => user.id === req.session?.userId);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    if (currentCode !== currentUser.code) {
       return res.status(401).json({ error: 'Current code is incorrect' });
     }
 
-    // Update AUTH_CODE in memory for this session
-    AUTH_CODE = newCode;
+    currentUser.code = newCode;
+    const adminUser = ACCESS_USERS.find((user) => user.role === 'admin');
+    AUTH_CODE = adminUser?.code || AUTH_CODE;
 
     // Save to config file for persistence across restarts
     const config = await readConfig();
     await writeConfig({
       ...config,
-      AUTH_CODE: newCode,
-      DELETE_PASSWORD_HASH
+      AUTH_CODE,
+      DELETE_PASSWORD_HASH,
+      ACCESS_USERS
     });
 
     res.json({ ok: true, message: 'Access code updated successfully' });

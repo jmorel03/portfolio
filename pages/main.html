@@ -477,6 +477,17 @@
             display: block;
         }
 
+        .file-item .preview {
+          width: 72px;
+          height: 72px;
+          border-radius: 10px;
+          display: block;
+          margin: 0 auto 12px;
+          object-fit: cover;
+          background: #edf2f7;
+          border: 1px solid #e2e8f0;
+        }
+
         .file-item .name {
             font-weight: 500;
             color: #2d3748;
@@ -955,6 +966,31 @@
         }
       }
 
+      function isImageFile(file) {
+        const source = `${file?.name || ''} ${file?.content || ''}`.toLowerCase();
+        return /\.(jpg|jpeg|png|gif|webp|bmp|svg|tiff)(\?|$)/.test(source);
+      }
+
+      function isVideoFile(file) {
+        const source = `${file?.name || ''} ${file?.content || ''}`.toLowerCase();
+        return /\.(mp4|avi|mov|mkv|wmv|flv|webm|m4v)(\?|$)/.test(source);
+      }
+
+      function createFilePreviewHtml(file, folderType) {
+        const looksLikeImage = folderType === 'Photos' || isImageFile(file);
+        const looksLikeVideo = folderType === 'Videos' || isVideoFile(file);
+
+        if (looksLikeImage && file?.content) {
+          return `<img class="preview" src="${file.content}" alt="${file.name || 'Image preview'}" loading="lazy" onerror="this.outerHTML='<div class=\"icon\">🖼️</div>'">`;
+        }
+
+        if (looksLikeVideo && file?.content) {
+          return `<video class="preview" src="${file.content}" preload="metadata" muted playsinline onerror="this.outerHTML='<div class=\"icon\">🎥</div>'"></video>`;
+        }
+
+        return '<div class="icon">📄</div>';
+      }
+
       // Click to select file
       fileContentArea.addEventListener('click', () => {
         fileInput.click();
@@ -1133,12 +1169,10 @@
             });
           } else {
             // It's a regular file
-            let icon = '📄';
-            if (folder.type === 'Photos') icon = '🖼️';
-            else if (folder.type === 'Videos') icon = '🎥';
+            const previewHtml = createFilePreviewHtml(file, folder.type);
 
             fileDiv.innerHTML = `
-              <div class="icon">${icon}</div>
+              ${previewHtml}
               <div class="name">${file.name}</div>
             `;
             fileDiv.addEventListener('click', () => {

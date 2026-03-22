@@ -9,9 +9,12 @@ async function hmacSha256(secret, data) {
   return signature;
 }
 
-async function createToken(secret, expiresSeconds = 1800) {
+async function createToken(secret, expiresSeconds = 1800, claims = {}) {
   const header = base64url(JSON.stringify({ alg:'HS256', typ:'JWT' }));
-  const payload = base64url(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expiresSeconds }));
+  const payload = base64url(JSON.stringify({
+    exp: Math.floor(Date.now() / 1000) + expiresSeconds,
+    ...claims
+  }));
   const message = `${header}.${payload}`;
   const sig = await hmacSha256(secret, message);
   const token = `${message}.${base64url(sig)}`;
@@ -19,15 +22,19 @@ async function createToken(secret, expiresSeconds = 1800) {
 }
 
 async function verifyToken(secret, token) {
-  if (!token) return false;
+  if (!token) return null;
   const parts = token.split('.');
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   const [header, payload, signature] = parts;
   const message = `${header}.${payload}`;
   const expectedSig = base64url(await hmacSha256(secret, message));
-  if (signature !== expectedSig) return false;
+  if (signature !== expectedSig) return null;
   const data = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-  return data.exp && Date.now() / 1000 < data.exp;
+  if (!(data.exp && Date.now() / 1000 < data.exp)) {
+    return null;
+  }
+
+  return data;
 }
 
 function sanitizeFileName(fileName) {
@@ -42,8 +49,65 @@ function sanitizeFileName(fileName) {
 const PORTFOLIO_DATA_KEY = 'portfolio:data:v1';
 const FILE_KEY_PREFIX = 'file:';
 const AUTH_CODE_KEY = 'auth:code:v1';
+const ACCESS_USERS_KEY = 'access:users:v1';
 const DELETE_PASSWORD_HASH_KEY = 'delete:password:hash:v1';
 const LOGIN_ACTIVITY_KEY = 'login:activity:v1';
+const PASSWORD_HASH_ITERATIONS = 210000;
+
+const ROLE_LEVEL = {
+  viewer: 1,
+  editor: 2,
+  admin: 3
+};
+
+function normalizeRole(role) {
+  const value = String(role || '').toLowerCase();
+  return ROLE_LEVEL[value] ? value : 'viewer';
+}
+
+function hasRole(actualRole, requiredRole) {
+  return (ROLE_LEVEL[normalizeRole(actualRole)] || 0) >= (ROLE_LEVEL[normalizeRole(requiredRole)] || Number.MAX_SAFE_INTEGER);
+}
+
+function normalizeAccessUsers(users, fallbackCode) {
+  if (!Array.isArray(users)) {
+    return [{ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' }];
+  }
+
+  const normalized = users
+    .map((user, index) => {
+      const code = String(user?.code || '').trim();
+      if (!/^\d{4}$/.test(code)) {
+        return null;
+      }
+
+      return {
+        id: String(user?.id || `user-${index + 1}`),
+        name: String(user?.name || `User ${index + 1}`),
+        code,
+        role: normalizeRole(user?.role)
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalized.some((user) => user.role === 'admin')) {
+    normalized.unshift({ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' });
+  }
+
+  return normalized.length > 0 ? normalized : [{ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' }];
+}
+
+function sanitizeAccessUsersForAdmin(users) {
+  return (Array.isArray(users) ? users : []).map((user) => ({
+    id: user.id,
+    name: user.name,
+    role: normalizeRole(user.role)
+  }));
+}
+
+function generateUserId() {
+  return `user-${crypto.randomUUID()}`;
+}
 
 async function hashText(value) {
   const data = new TextEncoder().encode(value);
@@ -51,27 +115,128 @@ async function hashText(value) {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function getAuthCode(env) {
-  const fallback = env.AUTH_CODE || '1234';
-
-  if (!env.PORTFOLIO_KV) {
-    return fallback;
-  }
-
-  const savedCode = await env.PORTFOLIO_KV.get(AUTH_CODE_KEY);
-  if (savedCode && /^\d{4}$/.test(savedCode)) {
-    return savedCode;
-  }
-
-  return fallback;
+function randomHex(byteLength) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function setAuthCode(env, code) {
+function timingSafeEqualHex(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  const maxLength = Math.max(left.length, right.length);
+
+  let diff = left.length ^ right.length;
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftCode = index < left.length ? left.charCodeAt(index) : 0;
+    const rightCode = index < right.length ? right.charCodeAt(index) : 0;
+    diff |= leftCode ^ rightCode;
+  }
+
+  return diff === 0;
+}
+
+async function derivePasswordHash(password, saltHex, pepper, iterations = PASSWORD_HASH_ITERATIONS) {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(`${String(password)}${pepper || ''}`),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: Uint8Array.from(saltHex.match(/.{1,2}/g).map((value) => parseInt(value, 16))),
+      iterations,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    256
+  );
+
+  return Array.from(new Uint8Array(bits)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashPasswordSecure(password, pepper) {
+  const saltHex = randomHex(16);
+  const hashHex = await derivePasswordHash(password, saltHex, pepper, PASSWORD_HASH_ITERATIONS);
+  return `pbkdf2$${PASSWORD_HASH_ITERATIONS}$${saltHex}$${hashHex}`;
+}
+
+async function verifyPasswordSecure(password, storedHash, pepper) {
+  if (!storedHash) {
+    return false;
+  }
+
+  if (storedHash.startsWith('pbkdf2$')) {
+    const parts = storedHash.split('$');
+    if (parts.length !== 4) {
+      return false;
+    }
+
+    const iterations = Number(parts[1]);
+    const saltHex = parts[2];
+    const expectedHash = parts[3];
+    if (!Number.isFinite(iterations) || !saltHex || !expectedHash) {
+      return false;
+    }
+
+    const derived = await derivePasswordHash(password, saltHex, pepper, iterations);
+    return timingSafeEqualHex(derived, expectedHash);
+  }
+
+  // Legacy SHA-256 support for previously stored values
+  if (/^[a-f0-9]{64}$/i.test(storedHash)) {
+    const legacy = await hashText(String(password));
+    return timingSafeEqualHex(legacy, storedHash);
+  }
+
+  return false;
+}
+
+async function getAccessUsers(env) {
+  const fallbackCode = env.AUTH_CODE || '1234';
+
+  let sourceUsers = null;
+
+  if (env.PORTFOLIO_KV) {
+    const raw = await env.PORTFOLIO_KV.get(ACCESS_USERS_KEY);
+    if (raw) {
+      try {
+        sourceUsers = JSON.parse(raw);
+      } catch {
+        sourceUsers = null;
+      }
+    }
+  }
+
+  if (!sourceUsers && env.ACCESS_USERS_JSON) {
+    try {
+      sourceUsers = JSON.parse(env.ACCESS_USERS_JSON);
+    } catch {
+      sourceUsers = null;
+    }
+  }
+
+  return normalizeAccessUsers(sourceUsers, fallbackCode);
+}
+
+async function setAccessUsers(env, users) {
   if (!env.PORTFOLIO_KV) {
     throw new Error('KV binding missing');
   }
 
-  await env.PORTFOLIO_KV.put(AUTH_CODE_KEY, code);
+  const normalized = normalizeAccessUsers(users, env.AUTH_CODE || '1234');
+  await env.PORTFOLIO_KV.put(ACCESS_USERS_KEY, JSON.stringify(normalized));
+
+  const adminUser = normalized.find((user) => user.role === 'admin');
+  if (adminUser?.code) {
+    await env.PORTFOLIO_KV.put(AUTH_CODE_KEY, adminUser.code);
+  }
+
+  return normalized;
 }
 
 async function getDeletePasswordHash(env) {
@@ -87,7 +252,7 @@ async function setDeletePasswordHash(env, password) {
     throw new Error('KV binding missing');
   }
 
-  const hashed = await hashText(password);
+  const hashed = await hashPasswordSecure(String(password), env.DELETE_PASSWORD_PEPPER || '');
   await env.PORTFOLIO_KV.put(DELETE_PASSWORD_HASH_KEY, hashed);
 }
 
@@ -119,6 +284,24 @@ async function appendLoginActivity(env, request) {
 
   activity.unshift(entry);
   await env.PORTFOLIO_KV.put(LOGIN_ACTIVITY_KEY, JSON.stringify(activity.slice(0, 20)));
+}
+
+function getSessionTokenFromCookieHeader(cookieHeader) {
+  const cookie = cookieHeader || '';
+  return cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
+}
+
+async function getSessionFromRequest(request, env) {
+  const token = getSessionTokenFromCookieHeader(request.headers.get('Cookie') || '');
+  return verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+}
+
+function unauthorizedResponse() {
+  return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+}
+
+function forbiddenResponse() {
+  return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
 }
 
 function collectFileKeys(value, keys = new Set()) {
@@ -257,14 +440,19 @@ export default {
         return new Response(JSON.stringify({ ok: false, error: 'Code must be 4 digits' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
-      const authCode = await getAuthCode(env);
-      if (code !== authCode) {
+      const users = await getAccessUsers(env);
+      const matchedUser = users.find((user) => user.code === code);
+      if (!matchedUser) {
         return new Response(JSON.stringify({ ok: false, error: 'Invalid code' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
       }
 
       await appendLoginActivity(env, request);
 
-      const token = await createToken(env.SESSION_SECRET || 'default-session-secret', 1800);
+      const token = await createToken(env.SESSION_SECRET || 'default-session-secret', 1800, {
+        uid: matchedUser.id,
+        name: matchedUser.name,
+        role: normalizeRole(matchedUser.role)
+      });
       const headers = new Headers({ 'Content-Type': 'application/json' });
       headers.append('Set-Cookie', `session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1800`);
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
@@ -276,13 +464,90 @@ export default {
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
     }
 
+    if (path === '/api/me' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      return new Response(JSON.stringify({
+        ok: true,
+        user: {
+          id: session.uid,
+          name: session.name,
+          role: normalizeRole(session.role)
+        }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (path === '/api/access-users' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      const users = await getAccessUsers(env);
+      return new Response(JSON.stringify({ ok: true, users: sanitizeAccessUsersForAdmin(users) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/access-users' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      try {
+        const body = await request.json().catch(() => null);
+        const normalizedName = String(body?.name || '').trim();
+        const normalizedCode = String(body?.code || '').trim();
+        const normalizedRole = normalizeRole(body?.role);
+
+        if (!normalizedName) {
+          return new Response(JSON.stringify({ error: 'Name is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (!/^\d{4}$/.test(normalizedCode)) {
+          return new Response(JSON.stringify({ error: 'Code must be exactly 4 digits' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        const users = await getAccessUsers(env);
+        if (users.some((user) => user.code === normalizedCode)) {
+          return new Response(JSON.stringify({ error: 'Code is already in use' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        users.push({
+          id: generateUserId(),
+          name: normalizedName,
+          code: normalizedCode,
+          role: normalizedRole
+        });
+
+        const saved = await setAccessUsers(env, users);
+        return new Response(JSON.stringify({ ok: true, users: sanitizeAccessUsersForAdmin(saved) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ error: 'Failed to create user' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
     if (path === '/api/change-code' && request.method === 'POST') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-      
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      const session = await getSessionFromRequest(request, env);
+
+      if (!session) {
+        return unauthorizedResponse();
       }
 
       try {
@@ -301,12 +566,18 @@ export default {
           return new Response(JSON.stringify({ error: 'New codes do not match' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
 
-        const authCode = await getAuthCode(env);
-        if (currentCode !== authCode) {
+        const users = await getAccessUsers(env);
+        const currentUser = users.find((user) => user.id === session.uid);
+        if (!currentUser) {
+          return new Response(JSON.stringify({ error: 'User not found' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (currentCode !== currentUser.code) {
           return new Response(JSON.stringify({ error: 'Current code is incorrect' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
 
-        await setAuthCode(env, newCode);
+        currentUser.code = newCode;
+        await setAccessUsers(env, users);
 
         return new Response(JSON.stringify({ ok: true, message: 'Access code updated successfully' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       } catch (error) {
@@ -315,12 +586,9 @@ export default {
     }
 
     if (path === '/api/login-activity' && request.method === 'GET') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
       }
 
       if (!env.PORTFOLIO_KV) {
@@ -341,12 +609,14 @@ export default {
     }
 
     if (path === '/api/delete-password' && request.method === 'POST') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      const session = await getSessionFromRequest(request, env);
 
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
       }
 
       try {
@@ -371,8 +641,8 @@ export default {
             return new Response(JSON.stringify({ error: 'Current delete password is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
           }
 
-          const currentHash = await hashText(String(currentPassword));
-          if (currentHash !== existingHash) {
+          const validCurrent = await verifyPasswordSecure(String(currentPassword), existingHash, env.DELETE_PASSWORD_PEPPER || '');
+          if (!validCurrent) {
             return new Response(JSON.stringify({ error: 'Current delete password is incorrect' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
           }
         }
@@ -386,12 +656,14 @@ export default {
     }
 
     if (path === '/api/data-all' && request.method === 'DELETE') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      const session = await getSessionFromRequest(request, env);
 
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
       }
 
       try {
@@ -407,9 +679,14 @@ export default {
           return new Response(JSON.stringify({ error: 'Delete password is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
 
-        const providedHash = await hashText(String(password));
-        if (providedHash !== existingHash) {
+        const validDeletePassword = await verifyPasswordSecure(String(password), existingHash, env.DELETE_PASSWORD_PEPPER || '');
+        if (!validDeletePassword) {
           return new Response(JSON.stringify({ error: 'Invalid delete password' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // Upgrade legacy hash in-place after successful verification
+        if (!String(existingHash).startsWith('pbkdf2$')) {
+          await setDeletePasswordHash(env, String(password));
         }
 
         const data = await loadPortfolioData(env);
@@ -438,19 +715,14 @@ export default {
     }
 
     if (path === '/api/session') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-      return new Response(JSON.stringify({ authenticated: valid }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const session = await getSessionFromRequest(request, env);
+      return new Response(JSON.stringify({ authenticated: !!session }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
     if (path === '/api/data' && request.method === 'GET') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
       }
 
       try {
@@ -468,12 +740,13 @@ export default {
     }
 
     if (path === '/api/data' && request.method === 'POST') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
 
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      if (!hasRole(session.role, 'editor')) {
+        return forbiddenResponse();
       }
 
       try {
@@ -494,12 +767,13 @@ export default {
     }
 
     if (path === '/api/upload' && request.method === 'POST') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
 
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      if (!hasRole(session.role, 'editor')) {
+        return forbiddenResponse();
       }
 
       try {
@@ -547,12 +821,9 @@ export default {
     }
 
     if (path.startsWith('/api/files/') && request.method === 'GET') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
       }
       
       if (!env.PORTFOLIO_KV && !env.PORTFOLIO_R2) {
@@ -581,12 +852,13 @@ export default {
     }
 
     if (path.startsWith('/api/files/') && request.method === 'DELETE') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
 
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      if (!hasRole(session.role, 'editor')) {
+        return forbiddenResponse();
       }
 
       const encodedKey = path.replace('/api/files/', '');
@@ -607,12 +879,13 @@ export default {
     }
 
     if (path === '/api/files/batch-delete' && request.method === 'POST') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
 
-      if (!valid) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      if (!hasRole(session.role, 'editor')) {
+        return forbiddenResponse();
       }
 
       const body = await request.json().catch(() => ({}));
@@ -652,10 +925,8 @@ export default {
     }
 
     if (path === '/pages/main.html') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-      if (!valid) {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
         return Response.redirect(`${new URL(request.url).origin}/`, 302);
       }
       // Serve the latest main.html from your repo
@@ -670,10 +941,8 @@ export default {
         });
     }
     if (path === '/pages/settings.html') {
-      const cookie = request.headers.get('Cookie') || '';
-      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
-      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
-      if (!valid) {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
         return Response.redirect(`${new URL(request.url).origin}/`, 302);
       }
       // Serve the latest settings.html from your repo

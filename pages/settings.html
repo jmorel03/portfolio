@@ -328,6 +328,36 @@
             </ul>
         </div>
 
+        <div class="settings-section hidden" id="adminAccessSection">
+            <h2>Admin Access</h2>
+            <p style="color: #666; margin-bottom: 15px;">Manage who can access this shared portfolio.</p>
+
+            <ul id="accessUsersList" class="activity-log">
+                <li>Loading access users...</li>
+            </ul>
+
+            <div class="form-row" style="margin-top: 20px;">
+                <div class="setting-group">
+                    <label for="adminUserName">Name</label>
+                    <input type="text" id="adminUserName" placeholder="Enter user name">
+                </div>
+                <div class="setting-group">
+                    <label for="adminUserCode">4-Digit Code</label>
+                    <input type="password" id="adminUserCode" maxlength="4" pattern="\d{4}" placeholder="1234">
+                </div>
+                <div class="setting-group">
+                    <label for="adminUserRole">Role</label>
+                    <select id="adminUserRole">
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" id="addAccessUserBtn">Add User</button>
+        </div>
+
         <div class="settings-section">
             <div class="btn-group">
                 <button class="btn btn-primary" id="saveSettings">Save Settings</button>
@@ -341,6 +371,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadSettings();
             loadLoginActivity();
+            loadAdminAccess();
         });
 
         // Save settings
@@ -371,6 +402,10 @@
 
         document.getElementById('saveDeletePassword').addEventListener('click', function() {
             saveDeletePassword();
+        });
+
+        document.getElementById('addAccessUserBtn').addEventListener('click', function() {
+            createAccessUser();
         });
 
         function loadSettings() {
@@ -581,6 +616,97 @@
             } catch (error) {
                 console.error('Error loading login activity:', error);
                 list.innerHTML = '<li>Unable to load login activity.</li>';
+            }
+        }
+
+        async function loadAdminAccess() {
+            try {
+                const meResponse = await fetch('/api/me', {
+                    credentials: 'include'
+                });
+
+                const meResult = await meResponse.json();
+                if (!meResponse.ok || meResult?.user?.role !== 'admin') {
+                    return;
+                }
+
+                const adminSection = document.getElementById('adminAccessSection');
+                adminSection.classList.remove('hidden');
+                await loadAccessUsers();
+            } catch (error) {
+                console.error('Error loading admin access section:', error);
+            }
+        }
+
+        async function loadAccessUsers() {
+            const list = document.getElementById('accessUsersList');
+
+            try {
+                const response = await fetch('/api/access-users', {
+                    credentials: 'include'
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    list.innerHTML = '<li>Unable to load access users.</li>';
+                    return;
+                }
+
+                const users = Array.isArray(result.users) ? result.users : [];
+                if (!users.length) {
+                    list.innerHTML = '<li>No users configured.</li>';
+                    return;
+                }
+
+                list.innerHTML = users.map((user) => {
+                    return `<li>${user.name} — ${String(user.role || '').toUpperCase()}</li>`;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading access users:', error);
+                list.innerHTML = '<li>Unable to load access users.</li>';
+            }
+        }
+
+        async function createAccessUser() {
+            const name = document.getElementById('adminUserName').value.trim();
+            const code = document.getElementById('adminUserCode').value.trim();
+            const role = document.getElementById('adminUserRole').value;
+
+            if (!name) {
+                showError('Please enter a user name.');
+                return;
+            }
+
+            if (!/^\d{4}$/.test(code)) {
+                showError('User code must be 4 digits.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/access-users', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ name, code, role })
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    showError(result.error || 'Unable to add user.');
+                    return;
+                }
+
+                document.getElementById('adminUserName').value = '';
+                document.getElementById('adminUserCode').value = '';
+                document.getElementById('adminUserRole').value = 'viewer';
+
+                showSuccess('User added successfully.');
+                await loadAccessUsers();
+            } catch (error) {
+                console.error('Error creating access user:', error);
+                showError('Network error. Please try again.');
             }
         }
 
