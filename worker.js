@@ -41,6 +41,14 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (path === '/api/version' && request.method === 'GET') {
+      return new Response(JSON.stringify({
+        hash: env.GIT_HASH || 'unknown',
+        message: env.GIT_MESSAGE || 'production',
+        timestamp: env.GIT_TIMESTAMP || new Date().toISOString()
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (path === '/api/login' && request.method === 'POST') {
       const body = await request.json().catch(() => null);
       const code = body?.code?.toString().trim();

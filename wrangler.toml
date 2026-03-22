@@ -4,4 +4,4 @@ compatibility_date = "2026-01-01"
 
 [env.production]
   route = "jonathanreyesmorel.com/*"
-  vars = { AUTH_CODE = "0309", SESSION_SECRET = "Crimson-falcon-dances-under-silent-moons-while-emerald-rivers-whisper-secrets" }
+  vars = { AUTH_CODE = "0309", SESSION_SECRET = "Crimson-falcon-dances-under-silent-moons-while-emerald-rivers-whisper-secrets", GIT_HASH = "unknown", GIT_MESSAGE = "production", GIT_TIMESTAMP = "2026-01-01T00:00:00Z" }

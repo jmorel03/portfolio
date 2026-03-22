@@ -3,10 +3,25 @@ const session = require('express-session');
 const path = require('path');
 const fs = require('fs').promises;
 const multer = require('multer');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 let AUTH_CODE = process.env.AUTH_CODE || '1234';
+
+// Get last git commit info
+function getGitInfo() {
+  try {
+    const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    const message = execSync('git log -1 --pretty=format:%s', { encoding: 'utf8' }).trim();
+    const timestamp = execSync('git log -1 --pretty=format:%aI', { encoding: 'utf8' }).trim();
+    
+    return { hash, message, timestamp };
+  } catch (error) {
+    console.log('Git info not available:', error.message);
+    return { hash: 'unknown', message: 'unknown', timestamp: new Date().toISOString() };
+  }
+}
 
 // Load saved AUTH_CODE from config file if it exists
 (async () => {
@@ -64,6 +79,12 @@ function requireAuth(req, res, next) {
   if (req.session?.authenticated) return next();
   return res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
+
+// Version endpoint (public)
+app.get('/api/version', (req, res) => {
+  const gitInfo = getGitInfo();
+  res.json(gitInfo);
+});
 
 app.post('/api/login', (req, res) => {
   const { code } = req.body;
