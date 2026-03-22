@@ -645,6 +645,29 @@
         .context-menu button:hover {
             background: rgba(229, 62, 62, 0.1);
         }
+
+        #toast {
+          position: fixed;
+          left: 50%;
+          bottom: 24px;
+          transform: translateX(-50%) translateY(16px);
+          background: rgba(229, 62, 62, 0.95);
+          color: white;
+          padding: 12px 16px;
+          border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+          font-size: 0.95rem;
+          max-width: min(92vw, 640px);
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+          z-index: 3000;
+        }
+
+        #toast.show {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
         
         .file-item .name {
             font-size: 14px;
@@ -703,6 +726,8 @@
     <div id="fileContextMenu" class="context-menu">
         <button id="deleteFile">Delete File</button>
     </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
 
     <div id="folderView">
         <div id="folderViewHeader">
@@ -867,6 +892,7 @@
       const subFolderNameInput = document.getElementById('subFolderName');
       const saveSubFolderBtn = document.getElementById('saveSubFolder');
       const cancelSubFolderBtn = document.getElementById('cancelSubFolder');
+      const toast = document.getElementById('toast');
 
       // Drag and drop variables
       const fileContentArea = document.getElementById('fileContentArea');
@@ -882,6 +908,17 @@
       let selectedFolderIndex = -1;
       let currentFolderIndex = -1;
       let selectedFileIndex = -1;
+      let toastTimeout;
+
+      function showToast(message) {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toast.classList.remove('show');
+        }, 3200);
+      }
 
       // Initialize async data loading
       (async function initialize() {
@@ -1188,7 +1225,7 @@
           saveDataToServer();
           renderFolders();
           if (!deletedFromR2 && fileKeys.length > 0) {
-            alert('Folder was removed, but some files could not be deleted from R2 storage.');
+            showToast('Folder removed, but some files could not be deleted from R2 storage.');
           }
           contextMenu.style.display = 'none';
           selectedFolderIndex = -1;
@@ -1207,7 +1244,7 @@
           saveDataToServer();
           renderFiles();
           if (!deletedFromR2 && fileKeys.length > 0) {
-            alert('Item was removed, but the file could not be deleted from R2 storage.');
+            showToast('Item removed, but the file could not be deleted from R2 storage.');
           }
           fileContextMenu.style.display = 'none';
           selectedFileIndex = -1;
