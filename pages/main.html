@@ -700,6 +700,10 @@
         <button id="deleteFolder">Delete Folder</button>
     </div>
 
+    <div id="fileContextMenu" class="context-menu">
+        <button id="deleteFile">Delete File</button>
+    </div>
+
     <div id="folderView">
         <div id="folderViewHeader">
             <div id="breadcrumb">
@@ -842,6 +846,8 @@
       const cancelFolderBtn = document.getElementById('cancelFolder');
       const contextMenu = document.getElementById('contextMenu');
       const deleteFolderBtn = document.getElementById('deleteFolder');
+      const fileContextMenu = document.getElementById('fileContextMenu');
+      const deleteFileBtn = document.getElementById('deleteFile');
       const folderView = document.getElementById('folderView');
       const backToFolders = document.getElementById('backToFolders');
       const breadcrumb = document.getElementById('breadcrumb');
@@ -875,6 +881,7 @@
 
       let selectedFolderIndex = -1;
       let currentFolderIndex = -1;
+      let selectedFileIndex = -1;
 
       // Initialize async data loading
       (async function initialize() {
@@ -1070,6 +1077,13 @@
               // For now, just show an alert. In a full implementation, you'd navigate deeper
               alert(`Subfolder: ${file.name}\nThis contains ${file.files.length} items`);
             });
+            fileDiv.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              selectedFileIndex = index;
+              fileContextMenu.style.display = 'block';
+              fileContextMenu.style.left = e.pageX + 'px';
+              fileContextMenu.style.top = e.pageY + 'px';
+            });
           } else {
             // It's a regular file
             let icon = '📄';
@@ -1087,15 +1101,23 @@
                 alert(`File: ${file.name}\nContent: ${file.content}`);
               }
             });
+            fileDiv.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              selectedFileIndex = index;
+              fileContextMenu.style.display = 'block';
+              fileContextMenu.style.left = e.pageX + 'px';
+              fileContextMenu.style.top = e.pageY + 'px';
+            });
           }
 
           filesList.appendChild(fileDiv);
         });
       }
 
-      // Hide context menu when clicking elsewhere
+      // Hide context menus when clicking elsewhere
       document.addEventListener('click', () => {
         contextMenu.style.display = 'none';
+        fileContextMenu.style.display = 'none';
       });
 
       deleteFolderBtn.addEventListener('click', () => {
@@ -1105,6 +1127,16 @@
           renderFolders();
           contextMenu.style.display = 'none';
           selectedFolderIndex = -1;
+        }
+      });
+
+      deleteFileBtn.addEventListener('click', () => {
+        if (selectedFileIndex !== -1 && currentFolderIndex !== -1) {
+          folders[currentFolderIndex].files.splice(selectedFileIndex, 1);
+          saveDataToServer();
+          renderFiles();
+          fileContextMenu.style.display = 'none';
+          selectedFileIndex = -1;
         }
       });
 
