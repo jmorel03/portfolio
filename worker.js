@@ -101,6 +101,7 @@ function sanitizeAccessUsersForAdmin(users) {
   return (Array.isArray(users) ? users : []).map((user) => ({
     id: user.id,
     name: user.name,
+    code: user.code,
     role: normalizeRole(user.role)
   }));
 }
@@ -256,7 +257,7 @@ async function setDeletePasswordHash(env, password) {
   await env.PORTFOLIO_KV.put(DELETE_PASSWORD_HASH_KEY, hashed);
 }
 
-async function appendLoginActivity(env, request) {
+async function appendLoginActivity(env, request, user) {
   if (!env.PORTFOLIO_KV) {
     return;
   }
@@ -268,7 +269,11 @@ async function appendLoginActivity(env, request) {
     timestamp: new Date().toISOString(),
     ip,
     location,
-    userAgent
+    userAgent,
+    userId: user?.id || 'unknown',
+    userName: user?.name || 'Unknown user',
+    userCode: user?.code || 'unknown',
+    role: normalizeRole(user?.role)
   };
 
   const raw = await env.PORTFOLIO_KV.get(LOGIN_ACTIVITY_KEY);
@@ -446,7 +451,7 @@ export default {
         return new Response(JSON.stringify({ ok: false, error: 'Invalid code' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
       }
 
-      await appendLoginActivity(env, request);
+      await appendLoginActivity(env, request, matchedUser);
 
       const token = await createToken(env.SESSION_SECRET || 'default-session-secret', 1800, {
         uid: matchedUser.id,
@@ -694,6 +699,10 @@ export default {
       const session = await getSessionFromRequest(request, env);
       if (!session) {
         return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
       }
 
       if (!env.PORTFOLIO_KV) {

@@ -25,6 +25,79 @@
             z-index: 1000;
         }
 
+        .user-identity-badge {
+          position: fixed;
+          top: 20px;
+          left: 20px;
+          z-index: 1000;
+          display: none;
+          flex-direction: column;
+          gap: 2px;
+          padding: 12px 16px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.92);
+          backdrop-filter: blur(10px);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          min-width: 170px;
+        }
+
+        .user-identity-label {
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #718096;
+        }
+
+        .user-identity-name {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #2d3748;
+        }
+
+        .user-identity-role {
+          font-size: 0.82rem;
+          font-weight: 600;
+        }
+
+        .role-admin {
+          color: #c2410c;
+        }
+
+        .role-editor {
+          color: #0f766e;
+        }
+
+        .role-viewer {
+          color: #5a67d8;
+        }
+
+          #addFolderBtn:disabled,
+          #addFileBtn:disabled,
+          #addSubFolderBtn:disabled,
+          #saveFolder:disabled,
+          #saveFile:disabled,
+          #saveSubFolder:disabled,
+          #deleteFolder:disabled,
+          #deleteFile:disabled {
+              opacity: 0.55;
+              cursor: not-allowed;
+              box-shadow: none;
+              transform: none;
+          }
+
+          .drag-drop-area.disabled {
+              cursor: not-allowed;
+              opacity: 0.65;
+              border-color: #cbd5e0;
+              background: rgba(226, 232, 240, 0.55);
+          }
+
+          .drag-drop-area.disabled:hover {
+              border-color: #cbd5e0;
+              background: rgba(226, 232, 240, 0.55);
+          }
+
         #accountBtn {
             padding: 12px 20px;
             border: none;
@@ -58,9 +131,11 @@
 
         .account-menu button {
             display: block;
+
             width: 100%;
             padding: 12px 20px;
             border: none;
+
             background: none;
             text-align: left;
             cursor: pointer;
@@ -478,13 +553,14 @@
         }
 
         .file-item .preview {
-          width: 72px;
-          height: 72px;
+           width: 64px;
+           height: 64px;
           border-radius: 10px;
           display: block;
           margin: 0 auto 12px;
-          object-fit: cover;
-          background: #edf2f7;
+           object-fit: contain;
+           padding: 4px;
+           background: #ffffff;
           border: 1px solid #e2e8f0;
         }
 
@@ -708,9 +784,24 @@
             border: 1px solid #ccc;
             border-radius: 4px;
         }
+
+        @media (max-width: 768px) {
+          .user-identity-badge {
+            top: 12px;
+            left: 12px;
+            min-width: 150px;
+            padding: 10px 14px;
+          }
+        }
     </style>
 </head>
 <body>
+      <div id="userIdentityBadge" class="user-identity-badge" aria-live="polite">
+        <span class="user-identity-label">Signed in as</span>
+        <span id="userIdentityName" class="user-identity-name"></span>
+        <span id="userIdentityRole" class="user-identity-role"></span>
+      </div>
+
     <header style="position: fixed; top: 10px; right: 10px;">
         <button id="accountBtn" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer;">Account</button>
         <div id="accountMenu" class="account-menu">
@@ -827,9 +918,112 @@
         window.location.href = '/pages/settings.html';
       });
 
+      function formatRoleLabel(role) {
+        const normalized = String(role || '').toLowerCase();
+        if (!normalized) {
+          return 'Unknown role';
+        }
+
+        return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+      }
+
+      function getRoleClass(role) {
+        const normalized = String(role || '').toLowerCase();
+        if (normalized === 'admin') {
+          return 'role-admin';
+        }
+
+        if (normalized === 'editor') {
+          return 'role-editor';
+        }
+
+        return 'role-viewer';
+      }
+
+      async function loadCurrentUserIdentity() {
+        const badge = document.getElementById('userIdentityBadge');
+        const nameElement = document.getElementById('userIdentityName');
+        const roleElement = document.getElementById('userIdentityRole');
+
+        try {
+          const response = await fetch('/api/me', {
+            credentials: 'include'
+          });
+
+          if (!response.ok) {
+            badge.style.display = 'none';
+            return;
+          }
+
+          const result = await response.json();
+          const user = result?.user;
+          currentUserRole = String(user?.role || 'viewer').toLowerCase();
+          nameElement.textContent = user?.name || 'Unknown user';
+          roleElement.textContent = formatRoleLabel(user?.role);
+          roleElement.className = `user-identity-role ${getRoleClass(user?.role)}`;
+          updateEditingPermissions();
+          badge.style.display = 'flex';
+        } catch (error) {
+          console.error('Error loading current user identity:', error);
+          currentUserRole = 'viewer';
+          updateEditingPermissions();
+          badge.style.display = 'none';
+        }
+      }
+
       // Folder system - now syncs with server
       let folders = [];
       let isOnline = true;
+      let currentUserRole = 'viewer';
+
+      function hasEditorAccess() {
+        return currentUserRole === 'editor' || currentUserRole === 'admin';
+      }
+
+      function showReadOnlyMessage() {
+        showToast('Viewer access is read-only. Editing and deleting are not available.');
+      }
+
+      function ensureEditorAccess() {
+        if (hasEditorAccess()) {
+          return true;
+        }
+
+        showReadOnlyMessage();
+        return false;
+      }
+
+      function updateEditingPermissions() {
+        const canEdit = hasEditorAccess();
+        const editableButtons = [addFolderBtn, addFileBtn, addSubFolderBtn, saveFolderBtn, saveFileBtn, saveSubFolderBtn, deleteFolderBtn, deleteFileBtn];
+
+        editableButtons.forEach((button) => {
+          if (!button) return;
+          button.disabled = !canEdit;
+          button.title = canEdit ? '' : 'Viewer access is read-only';
+        });
+
+        fileContentArea.classList.toggle('disabled', !canEdit);
+        fileContentArea.setAttribute('aria-disabled', canEdit ? 'false' : 'true');
+      }
+
+      function rerenderCurrentView() {
+        if (currentFolderIndex === -1) {
+          renderFolders();
+          return;
+        }
+
+        if (!folders[currentFolderIndex]) {
+          folderView.style.display = 'none';
+          document.getElementById('folderContainer').style.display = 'block';
+          document.querySelector('header').style.display = 'block';
+          currentFolderIndex = -1;
+          renderFolders();
+          return;
+        }
+
+        renderFiles();
+      }
 
       // Load data from server
       async function loadDataFromServer() {
@@ -869,15 +1063,25 @@
             credentials: 'include',
             body: JSON.stringify({ folders })
           });
+
+          if (response.status === 401 || response.status === 403) {
+            showReadOnlyMessage();
+            await loadDataFromServer();
+            rerenderCurrentView();
+            return false;
+          }
           
           if (!response.ok) {
             throw new Error('Failed to save data to server');
           }
+
+          return true;
         } catch (error) {
           console.error('Error saving data to server:', error);
           // Fallback to localStorage
           localStorage.setItem('folders', JSON.stringify(folders));
           alert('Unable to save to server. Data saved locally only.');
+          return false;
         }
       }
 
@@ -943,6 +1147,7 @@
 
       // Initialize async data loading
       (async function initialize() {
+        await loadCurrentUserIdentity();
         await loadDataFromServer();
         renderFolders();
       })();
@@ -993,11 +1198,20 @@
 
       // Click to select file
       fileContentArea.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         fileInput.click();
       });
 
       // Handle file selection via click
       fileInput.addEventListener('change', (e) => {
+        if (!ensureEditorAccess()) {
+          fileInput.value = '';
+          return;
+        }
+
         const files = e.target.files;
         if (files.length > 0) {
           const file = files[0];
@@ -1020,6 +1234,10 @@
 
       // Upload file to server
       async function uploadFileToServer(file) {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         const formData = new FormData();
         formData.append('file', file);
         
@@ -1029,6 +1247,12 @@
             credentials: 'include',
             body: formData
           });
+
+          if (response.status === 401 || response.status === 403) {
+            showReadOnlyMessage();
+            fileInput.value = '';
+            return;
+          }
           
           if (response.ok) {
             const fileInfo = await response.json();
@@ -1059,6 +1283,10 @@
 
       // Drag and drop event handlers
       fileContentArea.addEventListener('dragover', (e) => {
+        if (!hasEditorAccess()) {
+          return;
+        }
+
         e.preventDefault();
         fileContentArea.classList.add('drag-over');
       });
@@ -1069,6 +1297,10 @@
       });
 
       fileContentArea.addEventListener('drop', (e) => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         e.preventDefault();
         fileContentArea.classList.remove('drag-over');
         
@@ -1108,6 +1340,10 @@
             openFolder(index);
           });
           folderDiv.addEventListener('contextmenu', (e) => {
+            if (!hasEditorAccess()) {
+              return;
+            }
+
             e.preventDefault();
             selectedFolderIndex = index;
             contextMenu.style.display = 'block';
@@ -1161,6 +1397,10 @@
               alert(`Subfolder: ${file.name}\nThis contains ${file.files.length} items`);
             });
             fileDiv.addEventListener('contextmenu', (e) => {
+              if (!hasEditorAccess()) {
+                return;
+              }
+
               e.preventDefault();
               selectedFileIndex = index;
               fileContextMenu.style.display = 'block';
@@ -1183,6 +1423,10 @@
               }
             });
             fileDiv.addEventListener('contextmenu', (e) => {
+              if (!hasEditorAccess()) {
+                return;
+              }
+
               e.preventDefault();
               selectedFileIndex = index;
               fileContextMenu.style.display = 'block';
@@ -1260,6 +1504,11 @@
       }
 
       deleteFolderBtn.addEventListener('click', async () => {
+        if (!ensureEditorAccess()) {
+          contextMenu.style.display = 'none';
+          return;
+        }
+
         if (selectedFolderIndex !== -1) {
           const targetFolder = folders[selectedFolderIndex];
           const fileKeys = collectFileKeys(targetFolder?.files || []);
@@ -1279,6 +1528,11 @@
       });
 
       deleteFileBtn.addEventListener('click', async () => {
+        if (!ensureEditorAccess()) {
+          fileContextMenu.style.display = 'none';
+          return;
+        }
+
         if (selectedFileIndex !== -1 && currentFolderIndex !== -1) {
           const targetItem = folders[currentFolderIndex].files[selectedFileIndex];
           const fileKeys = Array.isArray(targetItem?.files)
@@ -1317,6 +1571,10 @@
       }
 
       addFileBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         addFileModal.style.display = 'block';
         resetDropZone();
       });
@@ -1330,6 +1588,10 @@
       });
 
       addSubFolderBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         addSubFolderModal.style.display = 'block';
       });
 
@@ -1339,6 +1601,10 @@
       });
 
       saveSubFolderBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         const name = subFolderNameInput.value.trim();
         
         if (!name) {
@@ -1372,6 +1638,10 @@
       });
 
       saveFileBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         const name = fileNameInput.value.trim();
         let content = fileContentInput.value.trim();
         const url = fileUrlInput.value.trim();
@@ -1418,10 +1688,18 @@
       });
 
       addFolderBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         addFolderForm.style.display = 'block';
       });
 
       saveFolderBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          return;
+        }
+
         const name = folderNameInput.value.trim();
         const type = folderTypeSelect.value;
         
@@ -1462,8 +1740,6 @@
           subFolderNameInput.value = '';
         }
       });
-
-      renderFolders();
     </script>
 </body>
 </html>

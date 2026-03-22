@@ -95,13 +95,17 @@ async function writeConfig(config) {
   await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
-async function appendLoginActivity(req) {
+async function appendLoginActivity(req, user) {
   const ip = (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
   const userAgent = req.get('user-agent') || 'unknown';
   const entry = {
     timestamp: new Date().toISOString(),
     ip,
-    userAgent
+    userAgent,
+    userId: user?.id || 'unknown',
+    userName: user?.name || 'Unknown user',
+    userCode: user?.code || 'unknown',
+    role: normalizeRole(user?.role)
   };
 
   let activity = [];
@@ -166,6 +170,7 @@ function sanitizeAccessUsersForAdmin(users) {
   return (Array.isArray(users) ? users : []).map((user) => ({
     id: user.id,
     name: user.name,
+    code: user.code,
     role: normalizeRole(user.role)
   }));
 }
@@ -301,7 +306,7 @@ app.post('/api/login', async (req, res) => {
   }
 
   try {
-    await appendLoginActivity(req);
+    await appendLoginActivity(req, matchedUser);
   } catch (error) {
     console.error('Failed to append login activity:', error);
   }
@@ -566,7 +571,7 @@ app.get('/api/files/:filename', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/login-activity', requireAuth, async (req, res) => {
+app.get('/api/login-activity', requireRole('admin'), async (req, res) => {
   try {
     const raw = await fs.readFile(LOGIN_ACTIVITY_FILE, 'utf8');
     const activity = JSON.parse(raw);
