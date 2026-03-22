@@ -543,6 +543,111 @@ export default {
       }
     }
 
+    if (path.startsWith('/api/access-users/') && request.method === 'PUT') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      try {
+        const targetId = decodeURIComponent(path.replace('/api/access-users/', '') || '');
+        const body = await request.json().catch(() => null);
+        const users = await getAccessUsers(env);
+        const user = users.find((entry) => entry.id === targetId);
+
+        if (!user) {
+          return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (body?.name !== undefined) {
+          const normalizedName = String(body.name).trim();
+          if (!normalizedName) {
+            return new Response(JSON.stringify({ error: 'Name is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+          }
+          user.name = normalizedName;
+        }
+
+        if (body?.code !== undefined) {
+          const normalizedCode = String(body.code).trim();
+          if (!/^\d{4}$/.test(normalizedCode)) {
+            return new Response(JSON.stringify({ error: 'Code must be exactly 4 digits' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+          }
+
+          if (users.some((entry) => entry.id !== targetId && entry.code === normalizedCode)) {
+            return new Response(JSON.stringify({ error: 'Code is already in use' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+          }
+
+          user.code = normalizedCode;
+        }
+
+        if (body?.role !== undefined) {
+          const normalizedRole = normalizeRole(body.role);
+          if (user.role === 'admin' && normalizedRole !== 'admin') {
+            const adminCount = users.filter((entry) => entry.role === 'admin').length;
+            if (adminCount <= 1) {
+              return new Response(JSON.stringify({ error: 'At least one admin is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+            }
+          }
+          user.role = normalizedRole;
+        }
+
+        const saved = await setAccessUsers(env, users);
+        return new Response(JSON.stringify({ ok: true, users: sanitizeAccessUsersForAdmin(saved) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ error: 'Failed to update user' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    if (path.startsWith('/api/access-users/') && request.method === 'DELETE') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      try {
+        const targetId = decodeURIComponent(path.replace('/api/access-users/', '') || '');
+        const users = await getAccessUsers(env);
+        const targetIndex = users.findIndex((entry) => entry.id === targetId);
+
+        if (targetIndex === -1) {
+          return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (session.uid === targetId) {
+          return new Response(JSON.stringify({ error: 'You cannot delete your own account' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        const targetUser = users[targetIndex];
+        if (targetUser.role === 'admin') {
+          const adminCount = users.filter((entry) => entry.role === 'admin').length;
+          if (adminCount <= 1) {
+            return new Response(JSON.stringify({ error: 'At least one admin is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+          }
+        }
+
+        users.splice(targetIndex, 1);
+        const saved = await setAccessUsers(env, users);
+
+        return new Response(JSON.stringify({ ok: true, users: sanitizeAccessUsersForAdmin(saved) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ error: 'Failed to delete user' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
     if (path === '/api/change-code' && request.method === 'POST') {
       const session = await getSessionFromRequest(request, env);
 

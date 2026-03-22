@@ -379,6 +379,107 @@ app.post('/api/access-users', requireRole('admin'), async (req, res) => {
   }
 });
 
+app.put('/api/access-users/:id', requireRole('admin'), async (req, res) => {
+  try {
+    const targetId = String(req.params.id || '').trim();
+    const { name, code, role } = req.body || {};
+
+    const user = ACCESS_USERS.find((entry) => entry.id === targetId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (name !== undefined) {
+      const normalizedName = String(name).trim();
+      if (!normalizedName) {
+        return res.status(400).json({ error: 'Name is required' });
+      }
+      user.name = normalizedName;
+    }
+
+    if (code !== undefined) {
+      const normalizedCode = String(code).trim();
+      if (!/^\d{4}$/.test(normalizedCode)) {
+        return res.status(400).json({ error: 'Code must be exactly 4 digits' });
+      }
+
+      if (ACCESS_USERS.some((entry) => entry.id !== targetId && entry.code === normalizedCode)) {
+        return res.status(409).json({ error: 'Code is already in use' });
+      }
+
+      user.code = normalizedCode;
+    }
+
+    if (role !== undefined) {
+      const normalizedRole = normalizeRole(role);
+      if (user.role === 'admin' && normalizedRole !== 'admin') {
+        const adminCount = ACCESS_USERS.filter((entry) => entry.role === 'admin').length;
+        if (adminCount <= 1) {
+          return res.status(400).json({ error: 'At least one admin is required' });
+        }
+      }
+      user.role = normalizedRole;
+    }
+
+    const adminUser = ACCESS_USERS.find((entry) => entry.role === 'admin');
+    AUTH_CODE = adminUser?.code || AUTH_CODE;
+
+    const config = await readConfig();
+    await writeConfig({
+      ...config,
+      AUTH_CODE,
+      DELETE_PASSWORD_HASH,
+      ACCESS_USERS
+    });
+
+    return res.json({ ok: true, users: sanitizeAccessUsersForAdmin(ACCESS_USERS) });
+  } catch (error) {
+    console.error('Error updating access user:', error);
+    return res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+app.delete('/api/access-users/:id', requireRole('admin'), async (req, res) => {
+  try {
+    const targetId = String(req.params.id || '').trim();
+    const targetIndex = ACCESS_USERS.findIndex((entry) => entry.id === targetId);
+
+    if (targetIndex === -1) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (req.session?.userId === targetId) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+
+    const targetUser = ACCESS_USERS[targetIndex];
+    if (targetUser.role === 'admin') {
+      const adminCount = ACCESS_USERS.filter((entry) => entry.role === 'admin').length;
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'At least one admin is required' });
+      }
+    }
+
+    ACCESS_USERS.splice(targetIndex, 1);
+
+    const adminUser = ACCESS_USERS.find((entry) => entry.role === 'admin');
+    AUTH_CODE = adminUser?.code || AUTH_CODE;
+
+    const config = await readConfig();
+    await writeConfig({
+      ...config,
+      AUTH_CODE,
+      DELETE_PASSWORD_HASH,
+      ACCESS_USERS
+    });
+
+    return res.json({ ok: true, users: sanitizeAccessUsersForAdmin(ACCESS_USERS) });
+  } catch (error) {
+    console.error('Error deleting access user:', error);
+    return res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
 app.get('/pages/main.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'pages', 'main.html'));
 });

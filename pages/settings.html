@@ -226,6 +226,32 @@
             border-bottom: none;
         }
 
+        .admin-user-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .admin-user-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .mini-btn {
+            border: 1px solid #d5dbe5;
+            background: #f8fafc;
+            color: #334155;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .mini-btn:hover {
+            background: #eef2f7;
+        }
+
         .hidden {
             display: none;
         }
@@ -406,6 +432,27 @@
 
         document.getElementById('addAccessUserBtn').addEventListener('click', function() {
             createAccessUser();
+        });
+
+        document.getElementById('accessUsersList').addEventListener('click', function(event) {
+            const button = event.target.closest('button[data-action][data-user-id]');
+            if (!button) {
+                return;
+            }
+
+            const action = button.getAttribute('data-action');
+            const userId = button.getAttribute('data-user-id');
+            const userName = button.getAttribute('data-user-name') || 'User';
+            const userRole = button.getAttribute('data-user-role') || 'viewer';
+
+            if (action === 'edit') {
+                editAccessUser(userId, userName, userRole);
+                return;
+            }
+
+            if (action === 'delete') {
+                deleteAccessUser(userId, userName);
+            }
         });
 
         function loadSettings() {
@@ -641,6 +688,13 @@
         async function loadAccessUsers() {
             const list = document.getElementById('accessUsersList');
 
+            const escapeHtml = (value) => String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
             try {
                 const response = await fetch('/api/access-users', {
                     credentials: 'include'
@@ -659,7 +713,10 @@
                 }
 
                 list.innerHTML = users.map((user) => {
-                    return `<li>${user.name} — ${String(user.role || '').toUpperCase()}</li>`;
+                    const safeName = escapeHtml(user.name || 'User');
+                    const safeRole = escapeHtml(user.role || 'viewer');
+                    const safeDisplayRole = escapeHtml(String(user.role || '').toUpperCase());
+                    return `<li><div class="admin-user-row"><span>${safeName} — ${safeDisplayRole}</span><div class="admin-user-actions"><button class="mini-btn" data-action="edit" data-user-id="${user.id}" data-user-name="${safeName}" data-user-role="${safeRole}">Edit</button><button class="mini-btn" data-action="delete" data-user-id="${user.id}" data-user-name="${safeName}">Remove</button></div></div></li>`;
                 }).join('');
             } catch (error) {
                 console.error('Error loading access users:', error);
@@ -706,6 +763,96 @@
                 await loadAccessUsers();
             } catch (error) {
                 console.error('Error creating access user:', error);
+                showError('Network error. Please try again.');
+            }
+        }
+
+        async function editAccessUser(userId, currentName, currentRole) {
+            const newName = prompt('Enter updated name:', currentName);
+            if (newName === null) {
+                return;
+            }
+
+            const trimmedName = newName.trim();
+            if (!trimmedName) {
+                showError('Name cannot be empty.');
+                return;
+            }
+
+            const roleInput = prompt('Enter role (viewer, editor, admin):', currentRole);
+            if (roleInput === null) {
+                return;
+            }
+
+            const normalizedRole = roleInput.trim().toLowerCase();
+            if (!['viewer', 'editor', 'admin'].includes(normalizedRole)) {
+                showError('Invalid role. Use viewer, editor, or admin.');
+                return;
+            }
+
+            const newCode = prompt('Enter new 4-digit code (leave blank to keep current):', '');
+            if (newCode === null) {
+                return;
+            }
+
+            const payload = {
+                name: trimmedName,
+                role: normalizedRole
+            };
+
+            if (newCode.trim()) {
+                if (!/^\d{4}$/.test(newCode.trim())) {
+                    showError('Code must be 4 digits.');
+                    return;
+                }
+                payload.code = newCode.trim();
+            }
+
+            try {
+                const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    showError(result.error || 'Unable to update user.');
+                    return;
+                }
+
+                showSuccess('User updated successfully.');
+                await loadAccessUsers();
+            } catch (error) {
+                console.error('Error updating access user:', error);
+                showError('Network error. Please try again.');
+            }
+        }
+
+        async function deleteAccessUser(userId, userName) {
+            if (!confirm(`Remove ${userName}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    showError(result.error || 'Unable to remove user.');
+                    return;
+                }
+
+                showSuccess('User removed successfully.');
+                await loadAccessUsers();
+            } catch (error) {
+                console.error('Error removing access user:', error);
                 showError('Network error. Please try again.');
             }
         }
