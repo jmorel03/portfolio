@@ -209,6 +209,27 @@
             flex: 1;
         }
 
+        .activity-log {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .activity-log li {
+            padding: 10px 0;
+            border-bottom: 1px solid #ececec;
+            color: #555;
+            font-size: 0.95rem;
+        }
+
+        .activity-log li:last-child {
+            border-bottom: none;
+        }
+
+        .hidden {
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .form-row {
                 flex-direction: column;
@@ -277,9 +298,34 @@
 
                 <div class="btn-group">
                     <button class="btn btn-danger" id="deleteAllData">Delete All Portfolio Data</button>
-                    <button class="btn btn-danger" id="deleteAccount">Delete Account</button>
+                    <button class="btn btn-secondary" id="setDeletePasswordBtn">Set / Change Delete Password</button>
+                </div>
+
+                <div id="deletePasswordForm" class="setting-group hidden" style="margin-top: 20px;">
+                    <div class="setting-group">
+                        <label for="currentDeletePassword">Current Delete Password (required if already set)</label>
+                        <input type="password" id="currentDeletePassword" placeholder="Enter current delete password">
+                    </div>
+                    <div class="form-row">
+                        <div class="setting-group">
+                            <label for="newDeletePassword">New Delete Password</label>
+                            <input type="password" id="newDeletePassword" placeholder="Enter new delete password">
+                        </div>
+                        <div class="setting-group">
+                            <label for="confirmDeletePassword">Confirm New Delete Password</label>
+                            <input type="password" id="confirmDeletePassword" placeholder="Confirm new delete password">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="saveDeletePassword">Save Delete Password</button>
                 </div>
             </div>
+        </div>
+
+        <div class="settings-section">
+            <h2>Login Activity</h2>
+            <ul id="loginActivityList" class="activity-log">
+                <li>Loading recent login activity...</li>
+            </ul>
         </div>
 
         <div class="settings-section">
@@ -294,6 +340,7 @@
         // Load current settings
         document.addEventListener('DOMContentLoaded', function() {
             loadSettings();
+            loadLoginActivity();
         });
 
         // Save settings
@@ -317,13 +364,13 @@
             }
         });
 
-        // Delete account
-        document.getElementById('deleteAccount').addEventListener('click', function() {
-            if (confirm('Are you sure you want to delete your account? This will permanently delete everything and log you out.')) {
-                if (confirm('This action cannot be undone. Your account and all data will be lost forever. Continue?')) {
-                    deleteAccount();
-                }
-            }
+        document.getElementById('setDeletePasswordBtn').addEventListener('click', function() {
+            const form = document.getElementById('deletePasswordForm');
+            form.classList.toggle('hidden');
+        });
+
+        document.getElementById('saveDeletePassword').addEventListener('click', function() {
+            saveDeletePassword();
         });
 
         function loadSettings() {
@@ -413,30 +460,128 @@
             showSuccess('Settings reset to defaults!');
         }
 
-        function deleteAllData() {
-            if (confirm('Final confirmation: Delete ALL folders and files?')) {
-                localStorage.removeItem('folders');
-                localStorage.removeItem('userSettings');
-                showSuccess('All portfolio data has been deleted.');
-                setTimeout(() => {
-                    window.location.href = '/pages/main.html';
-                }, 2000);
+        async function saveDeletePassword() {
+            const currentPassword = document.getElementById('currentDeletePassword').value.trim();
+            const newPassword = document.getElementById('newDeletePassword').value.trim();
+            const confirmPassword = document.getElementById('confirmDeletePassword').value.trim();
+
+            if (!newPassword) {
+                showError('Please enter a new delete password.');
+                return;
+            }
+
+            if (newPassword.length < 4) {
+                showError('Delete password must be at least 4 characters.');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                showError('Delete passwords do not match.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/delete-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        currentPassword,
+                        newPassword,
+                        confirmPassword
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showSuccess('Delete password saved successfully.');
+                    document.getElementById('currentDeletePassword').value = '';
+                    document.getElementById('newDeletePassword').value = '';
+                    document.getElementById('confirmDeletePassword').value = '';
+                    document.getElementById('deletePasswordForm').classList.add('hidden');
+                } else {
+                    showError(result.error || 'Failed to save delete password.');
+                }
+            } catch (error) {
+                console.error('Error saving delete password:', error);
+                showError('Network error. Please try again.');
             }
         }
 
-        function deleteAccount() {
-            // Clear all user data
-            localStorage.clear();
-            sessionStorage.clear();
+        async function deleteAllData() {
+            const password = prompt('Enter your delete password to confirm deleting all portfolio data:');
+            if (password === null) {
+                return;
+            }
 
-            // Redirect to logout
-            fetch('/api/logout', { method: 'POST' })
-                .then(() => {
-                    window.location.href = '/';
-                })
-                .catch(() => {
-                    window.location.href = '/';
+            if (!password.trim()) {
+                showError('Delete password is required.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/data-all', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ password: password.trim() })
                 });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    localStorage.removeItem('folders');
+                    localStorage.removeItem('userSettings');
+                    showSuccess('All portfolio data has been deleted.');
+                    setTimeout(() => {
+                        window.location.href = '/pages/main.html';
+                    }, 1500);
+                } else {
+                    showError(result.error || 'Failed to delete all data.');
+                }
+            } catch (error) {
+                console.error('Error deleting all data:', error);
+                showError('Network error. Please try again.');
+            }
+        }
+
+        async function loadLoginActivity() {
+            const list = document.getElementById('loginActivityList');
+
+            try {
+                const response = await fetch('/api/login-activity', {
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    list.innerHTML = '<li>Unable to load login activity.</li>';
+                    return;
+                }
+
+                const activity = Array.isArray(result.activity) ? result.activity : [];
+
+                if (!activity.length) {
+                    list.innerHTML = '<li>No recent login activity found.</li>';
+                    return;
+                }
+
+                list.innerHTML = activity.slice(0, 8).map((entry) => {
+                    const time = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Unknown time';
+                    const location = entry.location || 'Local';
+                    const ip = entry.ip || 'unknown IP';
+                    return `<li>${time} — ${location} — ${ip}</li>`;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading login activity:', error);
+                list.innerHTML = '<li>Unable to load login activity.</li>';
+            }
         }
 
         function getDefaultSettings() {
@@ -468,5 +613,4 @@
         }
     </script>
 </body>
-</html></content>
-<parameter name="filePath">c:\Users\creep\OneDrive\Desktop\GitHub\portfolio\pages\settings.html
+</html>

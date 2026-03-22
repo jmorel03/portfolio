@@ -42,6 +42,14 @@ function sanitizeFileName(fileName) {
 const PORTFOLIO_DATA_KEY = 'portfolio:data:v1';
 const FILE_KEY_PREFIX = 'file:';
 const AUTH_CODE_KEY = 'auth:code:v1';
+const DELETE_PASSWORD_HASH_KEY = 'delete:password:hash:v1';
+const LOGIN_ACTIVITY_KEY = 'login:activity:v1';
+
+async function hashText(value) {
+  const data = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 async function getAuthCode(env) {
   const fallback = env.AUTH_CODE || '1234';
@@ -64,6 +72,80 @@ async function setAuthCode(env, code) {
   }
 
   await env.PORTFOLIO_KV.put(AUTH_CODE_KEY, code);
+}
+
+async function getDeletePasswordHash(env) {
+  if (!env.PORTFOLIO_KV) {
+    return '';
+  }
+
+  return (await env.PORTFOLIO_KV.get(DELETE_PASSWORD_HASH_KEY)) || '';
+}
+
+async function setDeletePasswordHash(env, password) {
+  if (!env.PORTFOLIO_KV) {
+    throw new Error('KV binding missing');
+  }
+
+  const hashed = await hashText(password);
+  await env.PORTFOLIO_KV.put(DELETE_PASSWORD_HASH_KEY, hashed);
+}
+
+async function appendLoginActivity(env, request) {
+  if (!env.PORTFOLIO_KV) {
+    return;
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const userAgent = request.headers.get('User-Agent') || 'unknown';
+  const location = request.cf?.country || 'unknown';
+  const entry = {
+    timestamp: new Date().toISOString(),
+    ip,
+    location,
+    userAgent
+  };
+
+  const raw = await env.PORTFOLIO_KV.get(LOGIN_ACTIVITY_KEY);
+  let activity = [];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      activity = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      activity = [];
+    }
+  }
+
+  activity.unshift(entry);
+  await env.PORTFOLIO_KV.put(LOGIN_ACTIVITY_KEY, JSON.stringify(activity.slice(0, 20)));
+}
+
+function collectFileKeys(value, keys = new Set()) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectFileKeys(item, keys);
+    }
+    return keys;
+  }
+
+  if (value && typeof value === 'object') {
+    for (const nested of Object.values(value)) {
+      collectFileKeys(nested, keys);
+    }
+    return keys;
+  }
+
+  if (typeof value === 'string' && value.includes('/api/files/')) {
+    const prefixIndex = value.indexOf('/api/files/');
+    const encoded = value.slice(prefixIndex + '/api/files/'.length);
+    const decoded = decodeURIComponent(encoded.split('?')[0]);
+    if (decoded.startsWith(FILE_KEY_PREFIX)) {
+      keys.add(decoded);
+    }
+  }
+
+  return keys;
 }
 
 async function loadPortfolioData(env) {
@@ -179,6 +261,9 @@ export default {
       if (code !== authCode) {
         return new Response(JSON.stringify({ ok: false, error: 'Invalid code' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
       }
+
+      await appendLoginActivity(env, request);
+
       const token = await createToken(env.SESSION_SECRET || 'default-session-secret', 1800);
       const headers = new Headers({ 'Content-Type': 'application/json' });
       headers.append('Set-Cookie', `session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1800`);
@@ -225,6 +310,129 @@ export default {
 
         return new Response(JSON.stringify({ ok: true, message: 'Access code updated successfully' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to process request' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    if (path === '/api/login-activity' && request.method === 'GET') {
+      const cookie = request.headers.get('Cookie') || '';
+      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
+      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+
+      if (!valid) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (!env.PORTFOLIO_KV) {
+        return new Response(JSON.stringify({ ok: true, activity: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const raw = await env.PORTFOLIO_KV.get(LOGIN_ACTIVITY_KEY);
+      if (!raw) {
+        return new Response(JSON.stringify({ ok: true, activity: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      try {
+        const activity = JSON.parse(raw);
+        return new Response(JSON.stringify({ ok: true, activity: Array.isArray(activity) ? activity : [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } catch {
+        return new Response(JSON.stringify({ ok: true, activity: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    if (path === '/api/delete-password' && request.method === 'POST') {
+      const cookie = request.headers.get('Cookie') || '';
+      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
+      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+
+      if (!valid) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      try {
+        const body = await request.json().catch(() => null);
+        const { currentPassword, newPassword, confirmPassword } = body || {};
+
+        if (!newPassword || !confirmPassword) {
+          return new Response(JSON.stringify({ error: 'New password and confirmation are required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (newPassword !== confirmPassword) {
+          return new Response(JSON.stringify({ error: 'New passwords do not match' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (String(newPassword).trim().length < 4) {
+          return new Response(JSON.stringify({ error: 'Delete password must be at least 4 characters' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        const existingHash = await getDeletePasswordHash(env);
+        if (existingHash) {
+          if (!currentPassword) {
+            return new Response(JSON.stringify({ error: 'Current delete password is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+          }
+
+          const currentHash = await hashText(String(currentPassword));
+          if (currentHash !== existingHash) {
+            return new Response(JSON.stringify({ error: 'Current delete password is incorrect' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+          }
+        }
+
+        await setDeletePasswordHash(env, String(newPassword));
+
+        return new Response(JSON.stringify({ ok: true, message: 'Delete password updated successfully' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } catch {
+        return new Response(JSON.stringify({ error: 'Failed to process request' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    if (path === '/api/data-all' && request.method === 'DELETE') {
+      const cookie = request.headers.get('Cookie') || '';
+      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
+      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+
+      if (!valid) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      try {
+        const body = await request.json().catch(() => null);
+        const password = body?.password;
+
+        const existingHash = await getDeletePasswordHash(env);
+        if (!existingHash) {
+          return new Response(JSON.stringify({ error: 'Delete password is not set yet' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (!password) {
+          return new Response(JSON.stringify({ error: 'Delete password is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        const providedHash = await hashText(String(password));
+        if (providedHash !== existingHash) {
+          return new Response(JSON.stringify({ error: 'Invalid delete password' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        const data = await loadPortfolioData(env);
+        const keys = [...collectFileKeys(data?.folders || [])];
+
+        if (env.PORTFOLIO_R2) {
+          await Promise.all(keys.flatMap((key) => [
+            env.PORTFOLIO_R2.delete(key),
+            env.PORTFOLIO_R2.delete(`${key}:meta`)
+          ]));
+        }
+
+        if (env.PORTFOLIO_KV) {
+          await Promise.all(keys.flatMap((key) => [
+            env.PORTFOLIO_KV.delete(key),
+            env.PORTFOLIO_KV.delete(`${key}:meta`)
+          ]));
+        }
+
+        await savePortfolioData(env, []);
+
+        return new Response(JSON.stringify({ ok: true, deletedFiles: keys.length }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } catch {
         return new Response(JSON.stringify({ error: 'Failed to process request' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
     }

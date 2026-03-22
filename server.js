@@ -4,10 +4,57 @@ const path = require('path');
 const fs = require('fs').promises;
 const multer = require('multer');
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 let AUTH_CODE = process.env.AUTH_CODE || '1234';
+let DELETE_PASSWORD_HASH = '';
+
+const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
+const LOGIN_ACTIVITY_FILE = path.join(__dirname, 'data', 'login-activity.json');
+
+function hashPassword(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+async function readConfig() {
+  try {
+    const raw = await fs.readFile(CONFIG_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+async function writeConfig(config) {
+  await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+  await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+async function appendLoginActivity(req) {
+  const ip = (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  const userAgent = req.get('user-agent') || 'unknown';
+  const entry = {
+    timestamp: new Date().toISOString(),
+    ip,
+    userAgent
+  };
+
+  let activity = [];
+  try {
+    const raw = await fs.readFile(LOGIN_ACTIVITY_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    activity = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    activity = [];
+  }
+
+  activity.unshift(entry);
+  const limited = activity.slice(0, 20);
+  await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+  await fs.writeFile(LOGIN_ACTIVITY_FILE, JSON.stringify(limited, null, 2));
+}
 
 // Get last git commit info
 function getGitInfo() {
@@ -26,14 +73,17 @@ function getGitInfo() {
 // Load saved AUTH_CODE from config file if it exists
 (async () => {
   try {
-    const configFile = path.join(__dirname, 'data', 'config.json');
-    const config = JSON.parse(await fs.readFile(configFile, 'utf8'));
+    const config = await readConfig();
     if (config.AUTH_CODE) {
       AUTH_CODE = config.AUTH_CODE;
       console.log('Loaded saved AUTH_CODE from config file');
     }
+    if (config.DELETE_PASSWORD_HASH) {
+      DELETE_PASSWORD_HASH = config.DELETE_PASSWORD_HASH;
+      console.log('Loaded delete password from config file');
+    }
   } catch (error) {
-    // Config file doesn't exist yet, using default
+    
   }
 })();
 
@@ -86,7 +136,7 @@ app.get('/api/version', (req, res) => {
   res.json(gitInfo);
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { code } = req.body;
   if (!code || !/^\d{4}$/.test(code)) {
     return res.status(400).json({ ok: false, error: 'Code must be 4 digits' });
@@ -94,6 +144,12 @@ app.post('/api/login', (req, res) => {
 
   if (code !== AUTH_CODE) {
     return res.status(401).json({ ok: false, error: 'Invalid code' });
+  }
+
+  try {
+    await appendLoginActivity(req);
+  } catch (error) {
+    console.error('Failed to append login activity:', error);
   }
 
   req.session.authenticated = true;
@@ -193,6 +249,83 @@ app.get('/api/files/:filename', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/login-activity', requireAuth, async (req, res) => {
+  try {
+    const raw = await fs.readFile(LOGIN_ACTIVITY_FILE, 'utf8');
+    const activity = JSON.parse(raw);
+    res.json({ ok: true, activity: Array.isArray(activity) ? activity : [] });
+  } catch {
+    res.json({ ok: true, activity: [] });
+  }
+});
+
+app.post('/api/delete-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ error: 'New password and confirmation are required' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ error: 'New passwords do not match' });
+    }
+
+    if (String(newPassword).trim().length < 4) {
+      return res.status(400).json({ error: 'Delete password must be at least 4 characters' });
+    }
+
+    if (DELETE_PASSWORD_HASH) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Current delete password is required' });
+      }
+
+      if (hashPassword(String(currentPassword)) !== DELETE_PASSWORD_HASH) {
+        return res.status(401).json({ error: 'Current delete password is incorrect' });
+      }
+    }
+
+    DELETE_PASSWORD_HASH = hashPassword(String(newPassword));
+    const config = await readConfig();
+    await writeConfig({
+      ...config,
+      AUTH_CODE,
+      DELETE_PASSWORD_HASH
+    });
+
+    return res.json({ ok: true, message: 'Delete password updated successfully' });
+  } catch (error) {
+    console.error('Error setting delete password:', error);
+    return res.status(500).json({ error: 'Failed to update delete password' });
+  }
+});
+
+app.delete('/api/data-all', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+
+    if (!DELETE_PASSWORD_HASH) {
+      return res.status(400).json({ error: 'Delete password is not set yet' });
+    }
+
+    if (!password || hashPassword(String(password)) !== DELETE_PASSWORD_HASH) {
+      return res.status(401).json({ error: 'Invalid delete password' });
+    }
+
+    const dataFile = path.join(__dirname, 'data', 'portfolio.json');
+    const uploadsDir = path.join(__dirname, 'data', 'uploads');
+
+    await fs.rm(dataFile, { force: true });
+    await fs.rm(uploadsDir, { recursive: true, force: true });
+    await fs.mkdir(uploadsDir, { recursive: true });
+
+    return res.json({ ok: true, message: 'All portfolio data deleted' });
+  } catch (error) {
+    console.error('Error deleting all data:', error);
+    return res.status(500).json({ error: 'Failed to delete all data' });
+  }
+});
+
 // Change access code endpoint
 app.post('/api/change-code', requireAuth, async (req, res) => {
   try {
@@ -219,9 +352,12 @@ app.post('/api/change-code', requireAuth, async (req, res) => {
     AUTH_CODE = newCode;
 
     // Save to config file for persistence across restarts
-    const configFile = path.join(__dirname, 'data', 'config.json');
-    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
-    await fs.writeFile(configFile, JSON.stringify({ AUTH_CODE: newCode }, null, 2));
+    const config = await readConfig();
+    await writeConfig({
+      ...config,
+      AUTH_CODE: newCode,
+      DELETE_PASSWORD_HASH
+    });
 
     res.json({ ok: true, message: 'Access code updated successfully' });
   } catch (error) {
