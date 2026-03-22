@@ -1,10 +1,32 @@
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const fs = require('fs').promises;
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const AUTH_CODE = process.env.AUTH_CODE || '1234';
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'data', 'uploads');
+    try {
+      await fs.mkdir(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename with timestamp
+    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({ storage: storage });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -52,6 +74,88 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/pages/main.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'pages', 'main.html'));
+});
+
+app.get('/pages/settings.html', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'pages', 'settings.html'));
+});
+
+// Data synchronization endpoints
+app.get('/api/data', requireAuth, async (req, res) => {
+  try {
+    const dataDir = path.join(__dirname, 'data');
+    const dataFile = path.join(dataDir, 'portfolio.json');
+    
+    // Create data directory if it doesn't exist
+    await fs.mkdir(dataDir, { recursive: true });
+    
+    // Try to read existing data
+    try {
+      const data = await fs.readFile(dataFile, 'utf8');
+      res.json(JSON.parse(data));
+    } catch (error) {
+      // Return empty data structure if file doesn't exist
+      res.json({ folders: [], lastSync: new Date().toISOString() });
+    }
+  } catch (error) {
+    console.error('Error reading data:', error);
+    res.status(500).json({ error: 'Failed to read data' });
+  }
+});
+
+app.post('/api/data', requireAuth, async (req, res) => {
+  try {
+    const dataDir = path.join(__dirname, 'data');
+    const dataFile = path.join(dataDir, 'portfolio.json');
+    
+    // Create data directory if it doesn't exist
+    await fs.mkdir(dataDir, { recursive: true });
+    
+    // Save the data
+    const dataToSave = {
+      ...req.body,
+      lastSync: new Date().toISOString()
+    };
+    
+    await fs.writeFile(dataFile, JSON.stringify(dataToSave, null, 2));
+    res.json({ success: true, lastSync: dataToSave.lastSync });
+  } catch (error) {
+    console.error('Error saving data:', error);
+    res.status(500).json({ error: 'Failed to save data' });
+  }
+});
+
+// File upload endpoint
+app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    // Return file information
+    const fileInfo = {
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      url: `/api/files/${req.file.filename}`
+    };
+    
+    res.json(fileInfo);
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+// Serve uploaded files
+app.get('/api/files/:filename', requireAuth, async (req, res) => {
+  try {
+    const filePath = path.join(__dirname, 'data', 'uploads', req.params.filename);
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Error serving file:', error);
+    res.status(404).json({ error: 'File not found' });
+  }
 });
 
 app.listen(PORT, () => {

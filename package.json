@@ -1,5 +1,10 @@
 {
   "devDependencies": {
     "wrangler": "^4.75.0"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "multer": "^2.1.1"
   }
 }

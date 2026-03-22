@@ -3,29 +3,668 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Portfolio</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        header {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        #accountBtn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            color: #5a67d8;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        #accountBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+
         .account-menu {
             position: absolute;
-            top: 40px;
+            top: 50px;
             right: 0;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
             display: none;
+            overflow: hidden;
         }
+
         .account-menu button {
             display: block;
             width: 100%;
-            padding: 8px 12px;
+            padding: 12px 20px;
             border: none;
             background: none;
             text-align: left;
             cursor: pointer;
+            color: #4a5568;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
         }
+
         .account-menu button:hover {
-            background: #f0f0f0;
+            background: rgba(90, 103, 216, 0.1);
+            color: #5a67d8;
+        }
+
+        #folderContainer {
+            max-width: 1200px;
+            margin: 100px auto 40px;
+            padding: 40px;
+        }
+
+        #folderContainer h1 {
+            text-align: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        #folderContainer p {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        #addFolderBtn {
+            display: block;
+            margin: 0 auto 40px;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        #addFolderBtn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        #folders {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        .folder {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px 20px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .folder:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .folder .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .folder .name {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 5px;
+            font-size: 1.1rem;
+        }
+
+        .folder .type {
+            font-size: 0.9rem;
+            color: #718096;
+            font-weight: 400;
+        }
+
+        #folderView {
+            max-width: 1200px;
+            margin: 80px auto;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        #folderViewHeader {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        #breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.1rem;
+            color: #4a5568;
+            font-weight: 500;
+        }
+
+        .breadcrumb-item {
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(90, 103, 216, 0.1);
+            color: #5a67d8;
+        }
+
+        .breadcrumb-item:hover {
+            background: rgba(90, 103, 216, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .breadcrumb-item.current {
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .breadcrumb-separator {
+            color: #a0aec0;
+            font-weight: bold;
+        }
+
+        #backToFolders {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        #backToFolders:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        #folderViewActions {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        #addFileBtn, #addSubFolderBtn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        #addFileBtn:hover, #addSubFolderBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 2000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 25px 30px 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #2d3748;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .modal-header button {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #a0aec0;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        .modal-header button:hover {
+            background: rgba(160, 174, 192, 0.1);
+            color: #4a5568;
+        }
+
+        .modal-body {
+            padding: 25px 30px;
+        }
+
+        .modal-body input {
+            display: block;
+            margin: 12px 0 20px;
+            padding: 14px 18px;
+            width: 100%;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        .drag-drop-area {
+            position: relative;
+            width: 100%;
+            height: 120px;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px 0 20px;
+        }
+
+        .drag-drop-area:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .drop-zone-content {
+            text-align: center;
+            color: #666;
+            transition: color 0.3s ease;
+        }
+
+        .drop-icon {
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .drop-text {
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .drop-subtext {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .drag-drop-area:hover .drop-zone-content {
+            color: #667eea;
+        }
+
+        .drag-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(102, 126, 234, 0.1);
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .drag-drop-area.drag-over .drag-overlay {
+            opacity: 1;
+        }
+
+        .drag-drop-area.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .drag-text {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 15px 30px 25px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .modal-footer button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .modal-footer #cancelFile {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .modal-footer #cancelFile:hover {
+            background: #cbd5e0;
+        }
+
+        .modal-footer #saveFile {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
+        }
+
+        .modal-footer #saveFile:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
+        }
+
+        #filesList {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .file-item {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            border: 1px solid #e2e8f0;
+        }
+
+        .file-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            background: #ffffff;
+        }
+
+        .file-item .icon {
+            font-size: 36px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .file-item .name {
+            font-weight: 500;
+            color: #2d3748;
+            font-size: 0.95rem;
+            word-break: break-all;
+        }
+
+        #addFileForm {
+            display: none;
+            margin-top: 25px;
+            padding: 25px;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            background: #f8fafc;
+        }
+
+        #addFileForm h4 {
+            margin: 0 0 20px 0;
+            color: #2d3748;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        #addFileForm input {
+            display: block;
+            margin: 10px 0 20px;
+            padding: 12px 16px;
+            width: 100%;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        #addFileForm input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        #addFileForm button {
+            margin: 0 8px 0 0;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        #saveFile {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
+        }
+
+        #saveFile:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
+        }
+
+        #cancelFile {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        #cancelFile:hover {
+            background: #cbd5e0;
+        }
+
+        #addFolderForm {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            display: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 1001;
+        }
+
+        #addFolderForm h3 {
+            margin: 0 0 25px 0;
+            color: #2d3748;
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        #addFolderForm input, #addFolderForm select {
+            display: block;
+            margin: 12px 0 20px;
+            padding: 14px 18px;
+            width: 100%;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        #addFolderForm input:focus, #addFolderForm select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        #addFolderForm button {
+            margin: 8px 6px 0 0;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        #saveFolder {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        #saveFolder:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        #cancelFolder {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        #cancelFolder:hover {
+            background: #cbd5e0;
+        }
+
+        .context-menu {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            display: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .context-menu button {
+            display: block;
+            width: 100%;
+            padding: 10px 16px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            color: #e53e3e;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+        }
+
+        .context-menu button:hover {
+            background: rgba(229, 62, 62, 0.1);
+        }
+        
+        .file-item .name {
+            font-size: 14px;
+            word-break: break-all;
+        }
+        #addFileForm {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f9f9f9;
+        }
+        #addFileForm input {
+            display: block;
+            margin: 8px 0;
+            padding: 8px;
+            width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -37,11 +676,90 @@
             <button id="logoutBtn">Logout</button>
         </div>
     </header>
-    <main style="max-width:520px;margin:80px auto 40px;padding:1.2rem;border:1px solid #ccd; border-radius:10px;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; text-align:center;">
-      <h1>Welcome to the main page</h1>
-      <p>You are authenticated.</p>
-      <div id="logoutMessage" style="margin-top:1rem;color:#d14343;"></div>
-    </main>
+
+    <div id="folderContainer">
+        <h1>Welcome to Your Portfolio</h1>
+        <p>Organize your files, photos, and videos in beautiful folders</p>
+        <button id="addFolderBtn">Create New Folder</button>
+        <div id="folders"></div>
+    </div>
+
+    <div id="addFolderForm">
+        <h3>Add New Folder</h3>
+        <input type="text" id="folderName" placeholder="Folder Name">
+        <select id="folderType">
+            <option value="Files">Files</option>
+            <option value="Photos">Photos</option>
+            <option value="Videos">Videos</option>
+        </select>
+        <button id="saveFolder">Save</button>
+        <button id="cancelFolder">Cancel</button>
+    </div>
+
+    <div id="contextMenu" class="context-menu">
+        <button id="deleteFolder">Delete Folder</button>
+    </div>
+
+    <div id="folderView">
+        <div id="folderViewHeader">
+            <div id="breadcrumb">
+                <span class="breadcrumb-item" data-level="0">Home</span>
+                <span class="breadcrumb-separator">></span>
+                <span class="breadcrumb-item current" id="currentFolder">Folder</span>
+            </div>
+            <button id="backToFolders">← Back</button>
+        </div>
+        <div id="folderViewActions">
+            <button id="addFileBtn">Add File</button>
+            <button id="addSubFolderBtn">Create Folder</button>
+        </div>
+        <div id="filesList"></div>
+    </div>
+
+    <div id="addFileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New File</h3>
+                <button id="closeFileModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="fileName" placeholder="File Name">
+                <div class="drag-drop-area" id="fileContentArea">
+                    <div class="drop-zone-content">
+                        <div class="drop-icon">📁</div>
+                        <div class="drop-text">Drag & drop a file here</div>
+                        <div class="drop-subtext">or click to select</div>
+                    </div>
+                    <div class="drag-overlay" id="dragOverlay">
+                        <div class="drag-text">Drop file here</div>
+                    </div>
+                </div>
+                <input type="hidden" id="fileContent">
+                <input type="url" id="fileUrl" placeholder="Or enter a URL (optional)">
+            </div>
+            <div class="modal-footer">
+                <button id="cancelFile">Cancel</button>
+                <button id="saveFile">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addSubFolderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Folder</h3>
+                <button id="closeSubFolderModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="subFolderName" placeholder="Folder Name">
+            </div>
+            <div class="modal-footer">
+                <button id="cancelSubFolder">Cancel</button>
+                <button id="saveSubFolder">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script>
       document.getElementById('accountBtn').addEventListener('click', () => {
         const menu = document.getElementById('accountMenu');
@@ -53,13 +771,501 @@
         if (res.ok) {
           window.location.href = '/';
         } else {
-          document.getElementById('logoutMessage').textContent = 'Logout failed. Please refresh and try again.';
+          alert('Logout failed. Please refresh and try again.');
         }
       });
 
       document.getElementById('settingsBtn').addEventListener('click', () => {
-        alert('Account settings page not implemented yet.');
+        window.location.href = '/pages/settings.html';
       });
+
+      // Folder system - now syncs with server
+      let folders = [];
+      let isOnline = true;
+
+      // Load data from server
+      async function loadDataFromServer() {
+        try {
+          const response = await fetch('/api/data');
+          if (response.ok) {
+            const data = await response.json();
+            folders = data.folders || [];
+            // Ensure all folders have a files array
+            folders = folders.map(folder => ({ ...folder, files: folder.files || [] }));
+            isOnline = true;
+          } else {
+            throw new Error('Failed to load data from server');
+          }
+        } catch (error) {
+          console.error('Error loading data from server:', error);
+          // Fallback to localStorage if server is unavailable
+          folders = JSON.parse(localStorage.getItem('folders')) || [];
+          folders = folders.map(folder => ({ ...folder, files: folder.files || [] }));
+          isOnline = false;
+          alert('Unable to connect to server. Using local data. Changes will not sync across devices.');
+        }
+      }
+
+      // Save data to server
+      async function saveDataToServer() {
+        if (!isOnline) return; // Don't try to save if offline
+        
+        try {
+          const response = await fetch('/api/data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ folders })
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to save data to server');
+          }
+        } catch (error) {
+          console.error('Error saving data to server:', error);
+          // Fallback to localStorage
+          localStorage.setItem('folders', JSON.stringify(folders));
+          alert('Unable to save to server. Data saved locally only.');
+        }
+      }
+
+      // Initialize data
+      await loadDataFromServer();
+
+      const foldersDiv = document.getElementById('folders');
+      const addFolderBtn = document.getElementById('addFolderBtn');
+      const addFolderForm = document.getElementById('addFolderForm');
+      const folderNameInput = document.getElementById('folderName');
+      const folderTypeSelect = document.getElementById('folderType');
+      const saveFolderBtn = document.getElementById('saveFolder');
+      const cancelFolderBtn = document.getElementById('cancelFolder');
+      const contextMenu = document.getElementById('contextMenu');
+      const deleteFolderBtn = document.getElementById('deleteFolder');
+      const folderView = document.getElementById('folderView');
+      const backToFolders = document.getElementById('backToFolders');
+      const breadcrumb = document.getElementById('breadcrumb');
+      const currentFolderSpan = document.getElementById('currentFolder');
+      const addFileBtn = document.getElementById('addFileBtn');
+      const filesList = document.getElementById('filesList');
+      const addFileForm = document.getElementById('addFileForm');
+      const fileNameInput = document.getElementById('fileName');
+      const fileContentInput = document.getElementById('fileContent');
+      const saveFileBtn = document.getElementById('saveFile');
+      const cancelFileBtn = document.getElementById('cancelFile');
+      const addFileModal = document.getElementById('addFileModal');
+      const closeFileModal = document.getElementById('closeFileModal');
+      const addSubFolderBtn = document.getElementById('addSubFolderBtn');
+      const addSubFolderModal = document.getElementById('addSubFolderModal');
+      const closeSubFolderModal = document.getElementById('closeSubFolderModal');
+      const subFolderNameInput = document.getElementById('subFolderName');
+      const saveSubFolderBtn = document.getElementById('saveSubFolder');
+      const cancelSubFolderBtn = document.getElementById('cancelSubFolder');
+
+      // Drag and drop variables
+      const fileContentArea = document.getElementById('fileContentArea');
+      const dragOverlay = document.getElementById('dragOverlay');
+      const fileUrlInput = document.getElementById('fileUrl');
+
+      // Create hidden file input for click selection
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
+
+      let selectedFolderIndex = -1;
+      let currentFolderIndex = -1;
+
+      // Helper function to validate file type based on folder type
+      function validateFileType(file, folderType) {
+        const fileName = file.name.toLowerCase();
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tiff'];
+        const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v'];
+        const documentExtensions = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.rtf', '.csv', '.json', '.xml', '.html', '.css', '.js', '.py', '.java', '.cpp', '.c', '.php', '.rb', '.md'];
+        
+        switch(folderType) {
+          case 'Photos':
+            return imageExtensions.some(ext => fileName.endsWith(ext));
+          case 'Videos':
+            return videoExtensions.some(ext => fileName.endsWith(ext));
+          case 'Files':
+            return documentExtensions.some(ext => fileName.endsWith(ext));
+          default:
+            return true; // Allow all for unknown folder types
+        }
+      }
+
+      // Click to select file
+      fileContentArea.addEventListener('click', () => {
+        fileInput.click();
+      });
+
+      // Handle file selection via click
+      fileInput.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (files.length > 0) {
+          const file = files[0];
+          
+          // Validate file type based on current folder
+          if (currentFolderIndex !== -1) {
+            const folderType = folders[currentFolderIndex].type;
+            if (!validateFileType(file, folderType)) {
+              alert(`This file type is not allowed in ${folderType} folders. Please select a different file.`);
+              // Reset the file input
+              fileInput.value = '';
+              return;
+            }
+          }
+          
+          // Upload file to server
+          uploadFileToServer(file);
+        }
+      });
+
+      // Upload file to server
+      async function uploadFileToServer(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (response.ok) {
+            const fileInfo = await response.json();
+            fileContentInput.value = fileInfo.url; // Store server URL
+            
+            // Auto-fill name if empty
+            if (!fileNameInput.value.trim()) {
+              const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+              fileNameInput.value = nameWithoutExt;
+            }
+            
+            // Update visual feedback
+            const dropZoneContent = fileContentArea.querySelector('.drop-zone-content');
+            dropZoneContent.innerHTML = `
+              <div class="drop-icon">✅</div>
+              <div class="drop-text">${file.name}</div>
+              <div class="drop-subtext">File uploaded - ready to save</div>
+            `;
+          } else {
+            throw new Error('Upload failed');
+          }
+        } catch (error) {
+          console.error('Error uploading file:', error);
+          alert('Failed to upload file. Please try again.');
+          fileInput.value = '';
+        }
+      }
+
+      // Drag and drop event handlers
+      fileContentArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileContentArea.classList.add('drag-over');
+      });
+
+      fileContentArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        fileContentArea.classList.remove('drag-over');
+      });
+
+      fileContentArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileContentArea.classList.remove('drag-over');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          const file = files[0];
+          
+          // Validate file type based on current folder
+          if (currentFolderIndex !== -1) {
+            const folderType = folders[currentFolderIndex].type;
+            if (!validateFileType(file, folderType)) {
+              alert(`This file type is not allowed in ${folderType} folders. Please select a different file.`);
+              return;
+            }
+          }
+          
+          // Upload file to server
+          uploadFileToServer(file);
+        }
+      });
+
+      function renderFolders() {
+        foldersDiv.innerHTML = '';
+        folders.forEach((folder, index) => {
+          const folderDiv = document.createElement('div');
+          folderDiv.className = 'folder';
+          let icon = '📁';
+          if (folder.type === 'Files') icon = '📄';
+          else if (folder.type === 'Photos') icon = '🖼️';
+          else if (folder.type === 'Videos') icon = '🎥';
+          folderDiv.innerHTML = `
+            <div class="icon">${icon}</div>
+            <div class="name">${folder.name}</div>
+            <div class="type">${folder.type}</div>
+          `;
+          folderDiv.addEventListener('click', () => {
+            openFolder(index);
+          });
+          folderDiv.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            selectedFolderIndex = index;
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = e.pageX + 'px';
+            contextMenu.style.top = e.pageY + 'px';
+          });
+          foldersDiv.appendChild(folderDiv);
+        });
+      }
+
+      function openFolder(index) {
+        currentFolderIndex = index;
+        const folder = folders[index];
+        currentFolderSpan.textContent = `${folder.name} (${folder.type})`;
+        renderFiles();
+        document.getElementById('folderContainer').style.display = 'none';
+        document.querySelector('header').style.display = 'none';
+        folderView.style.display = 'block';
+      }
+
+      // Add breadcrumb click handlers
+      breadcrumb.addEventListener('click', (e) => {
+        if (e.target.classList.contains('breadcrumb-item') && e.target.dataset.level === '0') {
+          backToFolders.click(); // Go back to main folders
+        }
+      });
+
+      function renderFiles() {
+        if (currentFolderIndex === -1) return;
+        const folder = folders[currentFolderIndex];
+        filesList.innerHTML = '';
+        folder.files.forEach((file, index) => {
+          const fileDiv = document.createElement('div');
+          fileDiv.className = 'file-item';
+
+          // Check if it's a subfolder (has files property) or a regular file
+          if (file.files !== undefined) {
+            // It's a subfolder
+            let icon = '📁';
+            if (folder.type === 'Files') icon = '📂';
+            else if (folder.type === 'Photos') icon = '🖼️';
+            else if (folder.type === 'Videos') icon = '🎥';
+
+            fileDiv.innerHTML = `
+              <div class="icon">${icon}</div>
+              <div class="name">${file.name}</div>
+              <div class="type">Subfolder</div>
+            `;
+            fileDiv.addEventListener('click', () => {
+              // For now, just show an alert. In a full implementation, you'd navigate deeper
+              alert(`Subfolder: ${file.name}\nThis contains ${file.files.length} items`);
+            });
+          } else {
+            // It's a regular file
+            let icon = '📄';
+            if (folder.type === 'Photos') icon = '🖼️';
+            else if (folder.type === 'Videos') icon = '🎥';
+
+            fileDiv.innerHTML = `
+              <div class="icon">${icon}</div>
+              <div class="name">${file.name}</div>
+            `;
+            fileDiv.addEventListener('click', () => {
+              if (folder.type === 'Photos' || folder.type === 'Videos') {
+                window.open(file.content, '_blank');
+              } else {
+                alert(`File: ${file.name}\nContent: ${file.content}`);
+              }
+            });
+          }
+
+          filesList.appendChild(fileDiv);
+        });
+      }
+
+      // Hide context menu when clicking elsewhere
+      document.addEventListener('click', () => {
+        contextMenu.style.display = 'none';
+      });
+
+      deleteFolderBtn.addEventListener('click', () => {
+        if (selectedFolderIndex !== -1) {
+          folders.splice(selectedFolderIndex, 1);
+          saveDataToServer();
+          renderFolders();
+          contextMenu.style.display = 'none';
+          selectedFolderIndex = -1;
+        }
+      });
+
+      backToFolders.addEventListener('click', () => {
+        folderView.style.display = 'none';
+        document.getElementById('folderContainer').style.display = 'block';
+        document.querySelector('header').style.display = 'block';
+        currentFolderIndex = -1;
+      });
+
+      // Helper function to reset drop zone
+      function resetDropZone() {
+        const dropZoneContent = fileContentArea.querySelector('.drop-zone-content');
+        dropZoneContent.innerHTML = `
+          <div class="drop-icon">📁</div>
+          <div class="drop-text">Drag & drop a file here</div>
+          <div class="drop-subtext">or click to select</div>
+        `;
+      }
+
+      addFileBtn.addEventListener('click', () => {
+        addFileModal.style.display = 'block';
+        resetDropZone();
+      });
+
+      closeFileModal.addEventListener('click', () => {
+        addFileModal.style.display = 'none';
+        fileNameInput.value = '';
+        fileContentInput.value = '';
+        fileUrlInput.value = '';
+        resetDropZone();
+      });
+
+      addSubFolderBtn.addEventListener('click', () => {
+        addSubFolderModal.style.display = 'block';
+      });
+
+      closeSubFolderModal.addEventListener('click', () => {
+        addSubFolderModal.style.display = 'none';
+        subFolderNameInput.value = '';
+      });
+
+      saveSubFolderBtn.addEventListener('click', () => {
+        const name = subFolderNameInput.value.trim();
+        
+        if (!name) {
+          alert('Please enter a subfolder name before creating.');
+          subFolderNameInput.focus();
+          return;
+        }
+        
+        if (currentFolderIndex === -1) {
+          alert('Please select a folder first.');
+          return;
+        }
+        
+        if (name && currentFolderIndex !== -1) {
+          const subFolder = {
+            name: name,
+            type: folders[currentFolderIndex].type, // Inherit parent folder type
+            files: []
+          };
+          folders[currentFolderIndex].files.push(subFolder);
+          saveDataToServer();
+          renderFiles();
+          addSubFolderModal.style.display = 'none';
+          subFolderNameInput.value = '';
+        }
+      });
+
+      cancelSubFolderBtn.addEventListener('click', () => {
+        addSubFolderModal.style.display = 'none';
+        subFolderNameInput.value = '';
+      });
+
+      saveFileBtn.addEventListener('click', () => {
+        const name = fileNameInput.value.trim();
+        let content = fileContentInput.value.trim();
+        const url = fileUrlInput.value.trim();
+        
+        // If URL is provided, use it as content
+        if (url) {
+          content = url;
+        }
+        
+        if (!name) {
+          alert('Please enter a file name before saving.');
+          fileNameInput.focus();
+          return;
+        }
+        
+        if (!content) {
+          alert('Please add file content (drag & drop a file or enter a URL) before saving.');
+          return;
+        }
+        
+        if (currentFolderIndex === -1) {
+          alert('Please select a folder first.');
+          return;
+        }
+        
+        if (name && content && currentFolderIndex !== -1) {
+          folders[currentFolderIndex].files.push({ name, content });
+          saveDataToServer();
+          renderFiles();
+          addFileModal.style.display = 'none';
+          fileNameInput.value = '';
+          fileContentInput.value = '';
+          fileUrlInput.value = '';
+          resetDropZone();
+        }
+      });
+
+      cancelFileBtn.addEventListener('click', () => {
+        addFileModal.style.display = 'none';
+        fileNameInput.value = '';
+        fileContentInput.value = '';
+        fileUrlInput.value = '';
+        resetDropZone();
+      });
+
+      addFolderBtn.addEventListener('click', () => {
+        addFolderForm.style.display = 'block';
+      });
+
+      saveFolderBtn.addEventListener('click', () => {
+        const name = folderNameInput.value.trim();
+        const type = folderTypeSelect.value;
+        
+        if (!name) {
+          alert('Please enter a folder name before creating.');
+          folderNameInput.focus();
+          return;
+        }
+        
+        if (name) {
+          folders.push({ name, type, files: [] });
+          saveDataToServer();
+          renderFolders();
+          addFolderForm.style.display = 'none';
+          folderNameInput.value = '';
+        }
+      });
+
+      cancelFolderBtn.addEventListener('click', () => {
+        addFolderForm.style.display = 'none';
+        folderNameInput.value = '';
+      });
+
+      // Close modals when clicking outside
+      addFileModal.addEventListener('click', (e) => {
+        if (e.target === addFileModal) {
+          addFileModal.style.display = 'none';
+          fileNameInput.value = '';
+          fileContentInput.value = '';
+          fileUrlInput.value = '';
+          resetDropZone();
+        }
+      });
+
+      addSubFolderModal.addEventListener('click', (e) => {
+        if (e.target === addSubFolderModal) {
+          addSubFolderModal.style.display = 'none';
+          subFolderNameInput.value = '';
+        }
+      });
+
+      renderFolders();
     </script>
 </body>
 </html>
