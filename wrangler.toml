@@ -5,3 +5,7 @@ compatibility_date = "2026-01-01"
 [env.production]
   route = "jonathanreyesmorel.com/*"
   vars = { AUTH_CODE = "0309", SESSION_SECRET = "Crimson-falcon-dances-under-silent-moons-while-emerald-rivers-whisper-secrets", GIT_HASH = "fd730ad", GIT_MESSAGE = "update", GIT_TIMESTAMP = "2026-03-22T10:23:01-04:00", GITHUB_REPO = "jmorel03/portfolio" }
+
+[[env.production.kv_namespaces]]
+binding = "PORTFOLIO_KV"
+id = "1d61eeb7890f4e1781abd286d3d52bf6"
