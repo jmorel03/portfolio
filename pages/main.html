@@ -786,7 +786,9 @@
       // Load data from server
       async function loadDataFromServer() {
         try {
-          const response = await fetch('/api/data');
+          const response = await fetch('/api/data', {
+            credentials: 'include'
+          });
           if (response.ok) {
             const data = await response.json();
             folders = data.folders || [];
@@ -816,6 +818,7 @@
             headers: {
               'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({ folders })
           });
           
@@ -829,9 +832,6 @@
           alert('Unable to save to server. Data saved locally only.');
         }
       }
-
-      // Initialize data
-      await loadDataFromServer();
 
       const foldersDiv = document.getElementById('folders');
       const addFolderBtn = document.getElementById('addFolderBtn');
@@ -875,6 +875,12 @@
 
       let selectedFolderIndex = -1;
       let currentFolderIndex = -1;
+
+      // Initialize async data loading
+      (async function initialize() {
+        await loadDataFromServer();
+        renderFolders();
+      })();
 
       // Helper function to validate file type based on folder type
       function validateFileType(file, folderType) {
@@ -930,6 +936,7 @@
         try {
           const response = await fetch('/api/upload', {
             method: 'POST',
+            credentials: 'include',
             body: formData
           });
           

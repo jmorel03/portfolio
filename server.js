@@ -6,7 +6,21 @@ const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const AUTH_CODE = process.env.AUTH_CODE || '1234';
+let AUTH_CODE = process.env.AUTH_CODE || '1234';
+
+// Load saved AUTH_CODE from config file if it exists
+(async () => {
+  try {
+    const configFile = path.join(__dirname, 'data', 'config.json');
+    const config = JSON.parse(await fs.readFile(configFile, 'utf8'));
+    if (config.AUTH_CODE) {
+      AUTH_CODE = config.AUTH_CODE;
+      console.log('Loaded saved AUTH_CODE from config file');
+    }
+  } catch (error) {
+    // Config file doesn't exist yet, using default
+  }
+})();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -155,6 +169,43 @@ app.get('/api/files/:filename', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error serving file:', error);
     res.status(404).json({ error: 'File not found' });
+  }
+});
+
+// Change access code endpoint
+app.post('/api/change-code', requireAuth, async (req, res) => {
+  try {
+    const { currentCode, newCode, confirmCode } = req.body;
+
+    // Validate input
+    if (!currentCode || !newCode || !confirmCode) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (!/^\d{4}$/.test(currentCode) || !/^\d{4}$/.test(newCode)) {
+      return res.status(400).json({ error: 'Codes must be exactly 4 digits' });
+    }
+
+    if (newCode !== confirmCode) {
+      return res.status(400).json({ error: 'New codes do not match' });
+    }
+
+    if (currentCode !== AUTH_CODE) {
+      return res.status(401).json({ error: 'Current code is incorrect' });
+    }
+
+    // Update AUTH_CODE in memory for this session
+    AUTH_CODE = newCode;
+
+    // Save to config file for persistence across restarts
+    const configFile = path.join(__dirname, 'data', 'config.json');
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+    await fs.writeFile(configFile, JSON.stringify({ AUTH_CODE: newCode }, null, 2));
+
+    res.json({ ok: true, message: 'Access code updated successfully' });
+  } catch (error) {
+    console.error('Error changing code:', error);
+    res.status(500).json({ error: 'Failed to change access code' });
   }
 });
 

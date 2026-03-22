@@ -356,14 +356,8 @@
                     return;
                 }
 
-                // Here we would typically send to server, but for now we'll just show success
-                // In a real implementation, this would make an API call to change the access code
-                showSuccess('Access code updated successfully! You will need to use the new code to log in next time.');
-
-                // Clear code fields
-                document.getElementById('currentCode').value = '';
-                document.getElementById('newCode').value = '';
-                document.getElementById('confirmCode').value = '';
+                // Send to server to change the code
+                changeAccessCode(currentCode, newCode, confirmCode);
                 return;
             }
 
@@ -377,6 +371,39 @@
             localStorage.setItem('userSettings', JSON.stringify(settings));
 
             showSuccess('Settings saved successfully!');
+        }
+
+        async function changeAccessCode(currentCode, newCode, confirmCode) {
+            try {
+                const response = await fetch('/api/change-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ 
+                        currentCode, 
+                        newCode, 
+                        confirmCode 
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showSuccess('Access code updated successfully! You will need to use the new code to log in next time.');
+                    
+                    // Clear code fields
+                    document.getElementById('currentCode').value = '';
+                    document.getElementById('newCode').value = '';
+                    document.getElementById('confirmCode').value = '';
+                } else {
+                    showError(result.error || 'Failed to update access code');
+                }
+            } catch (error) {
+                console.error('Error changing code:', error);
+                showError('Network error. Please try again.');
+            }
         }
 
         function resetSettings() {
