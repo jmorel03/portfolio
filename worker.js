@@ -30,18 +30,17 @@ async function verifyToken(secret, token) {
   return data.exp && Date.now() / 1000 < data.exp;
 }
 
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
+function sanitizeFileName(fileName) {
+  return (fileName || 'upload')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80) || 'upload';
 }
 
 const PORTFOLIO_DATA_KEY = 'portfolio:data:v1';
+const FILE_KEY_PREFIX = 'file:';
 
 async function loadPortfolioData(env) {
   if (!env.PORTFOLIO_KV) {
@@ -68,6 +67,52 @@ async function savePortfolioData(env, folders) {
 
   const payload = JSON.stringify({ folders: Array.isArray(folders) ? folders : [] });
   await env.PORTFOLIO_KV.put(PORTFOLIO_DATA_KEY, payload);
+}
+
+async function saveFile(env, fileKey, buffer, meta) {
+  if (env.PORTFOLIO_R2) {
+    // Use R2 if available
+    await env.PORTFOLIO_R2.put(fileKey, buffer, { httpMetadata: { contentType: meta.contentType } });
+    await env.PORTFOLIO_R2.put(`${fileKey}:meta`, JSON.stringify(meta));
+  } else if (env.PORTFOLIO_KV) {
+    // Fall back to KV
+    await env.PORTFOLIO_KV.put(fileKey, buffer);
+    await env.PORTFOLIO_KV.put(`${fileKey}:meta`, JSON.stringify(meta));
+  } else {
+    throw new Error('No storage configured');
+  }
+}
+
+async function getFile(env, fileKey) {
+  if (env.PORTFOLIO_R2) {
+    try {
+      const obj = await env.PORTFOLIO_R2.get(fileKey);
+      if (!obj) return null;
+      return { buffer: await obj.arrayBuffer(), meta: null };
+    } catch {
+      return null;
+    }
+  } else if (env.PORTFOLIO_KV) {
+    const data = await env.PORTFOLIO_KV.get(fileKey, 'arrayBuffer');
+    return data ? { buffer: data, meta: null } : null;
+  }
+  return null;
+}
+
+async function getFileMeta(env, fileKey) {
+  if (env.PORTFOLIO_R2) {
+    try {
+      const obj = await env.PORTFOLIO_R2.get(`${fileKey}:meta`);
+      if (!obj) return {};
+      return JSON.parse(await obj.text());
+    } catch {
+      return {};
+    }
+  } else if (env.PORTFOLIO_KV) {
+    const metaRaw = await env.PORTFOLIO_KV.get(`${fileKey}:meta`);
+    return metaRaw ? JSON.parse(metaRaw) : {};
+  }
+  return {};
 }
 
 const CSS = `:root{--bg:#f3f6fb;--card:#ffffff;--accent:#3b82f6;--muted:#6b7280;--danger:#ef4444}*{box-sizing:border-box}body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:linear-gradient(180deg,var(--bg),#eaf2ff);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.container{width:100%;max-width:420px}.card{background:var(--card);padding:28px;border-radius:12px;box-shadow:0 6px 24px rgba(16,24,40,0.08);}h1{margin:0 0 6px;font-size:1.5rem}.lead{margin:0 0 18px;color:var(--muted);font-size:0.95rem}.login-form{display:flex;flex-direction:column;gap:10px}label{font-size:0.85rem;color:var(--muted)}input[type="email"],input[type="password"]{padding:12px 14px;border:1px solid #e6edf8;border-radius:8px;font-size:1rem}.options{display:flex;justify-content:space-between;align-items:center;margin-top:4px}.checkbox{font-size:0.9rem;color:var(--muted)}.forgot{font-size:0.9rem;color:var(--accent);text-decoration:none}.message{min-height:20px;font-size:0.9rem;color:var(--danger);margin-top:6px}.btn{margin-top:8px;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}.signup{margin-top:14px;text-align:center;color:var(--muted);font-size:0.9rem}.signup a{color:var(--accent);text-decoration:none}@media (max-width:420px){.card{padding:20px}}`;
@@ -213,6 +258,13 @@ export default {
       }
 
       try {
+        if (!env.PORTFOLIO_KV && !env.PORTFOLIO_R2) {
+          return new Response(JSON.stringify({ error: 'Storage not configured' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
         const formData = await request.formData();
         const file = formData.get('file');
 
@@ -224,13 +276,18 @@ export default {
         }
 
         const buffer = await file.arrayBuffer();
-        const base64 = arrayBufferToBase64(buffer);
         const mimeType = file.type || 'application/octet-stream';
-        const dataUrl = `data:${mimeType};base64,${base64}`;
+        const safeName = sanitizeFileName(file.name);
+        const fileKey = `${FILE_KEY_PREFIX}${crypto.randomUUID()}-${safeName}`;
+
+        await saveFile(env, fileKey, buffer, {
+          contentType: mimeType,
+          fileName: file.name || 'upload'
+        });
 
         return new Response(JSON.stringify({
           ok: true,
-          url: dataUrl,
+          url: `/api/files/${encodeURIComponent(fileKey)}`,
           name: file.name || 'upload'
         }), {
           status: 200,
@@ -242,6 +299,40 @@ export default {
           headers: { 'Content-Type': 'application/json' }
         });
       }
+    }
+
+    if (path.startsWith('/api/files/') && request.method === 'GET') {
+      const cookie = request.headers.get('Cookie') || '';
+      const token = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('session='))?.split('=')[1];
+      const valid = await verifyToken(env.SESSION_SECRET || 'default-session-secret', token);
+
+      if (!valid) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+      
+      if (!env.PORTFOLIO_KV && !env.PORTFOLIO_R2) {
+        return new Response('Storage not configured', { status: 500 });
+      }
+
+      const encodedKey = path.replace('/api/files/', '');
+      const fileKey = decodeURIComponent(encodedKey);
+
+      const file = await getFile(env, fileKey);
+      if (!file) {
+        return new Response('File not found', { status: 404 });
+      }
+
+      const meta = await getFileMeta(env, fileKey);
+      const headers = new Headers({
+        'Content-Type': meta.contentType || 'application/octet-stream',
+        'Cache-Control': 'private, max-age=3600'
+      });
+
+      if (meta.fileName) {
+        headers.set('Content-Disposition', `inline; filename="${meta.fileName.replace(/"/g, '')}"`);
+      }
+
+      return new Response(file.buffer, { status: 200, headers });
     }
 
     if (path === '/pages/main.html') {
