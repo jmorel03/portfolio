@@ -9,3 +9,7 @@ compatibility_date = "2026-01-01"
 [[env.production.kv_namespaces]]
 binding = "PORTFOLIO_KV"
 id = "1d61eeb7890f4e1781abd286d3d52bf6"
+
+[[env.production.r2_buckets]]
+binding = "PORTFOLIO_R2"
+bucket_name = "portfolio-uploads"
