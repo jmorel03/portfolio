@@ -1120,8 +1120,58 @@
         fileContextMenu.style.display = 'none';
       });
 
-      deleteFolderBtn.addEventListener('click', () => {
+      function extractFileKeyFromContent(content) {
+        if (typeof content !== 'string') return null;
+        if (!content.startsWith('/api/files/')) return null;
+        const encoded = content.replace('/api/files/', '');
+        try {
+          const key = decodeURIComponent(encoded);
+          return key.startsWith('file:') ? key : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function collectFileKeys(items) {
+        const keys = [];
+        if (!Array.isArray(items)) return keys;
+
+        items.forEach((entry) => {
+          if (entry && Array.isArray(entry.files)) {
+            keys.push(...collectFileKeys(entry.files));
+            return;
+          }
+
+          const key = extractFileKeyFromContent(entry?.content);
+          if (key) {
+            keys.push(key);
+          }
+        });
+
+        return [...new Set(keys)];
+      }
+
+      async function deleteFileKeysFromR2(fileKeys) {
+        if (!Array.isArray(fileKeys) || fileKeys.length === 0) return;
+
+        try {
+          await fetch('/api/files/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ fileKeys })
+          });
+        } catch (error) {
+          console.error('Failed to delete files from R2:', error);
+        }
+      }
+
+      deleteFolderBtn.addEventListener('click', async () => {
         if (selectedFolderIndex !== -1) {
+          const targetFolder = folders[selectedFolderIndex];
+          const fileKeys = collectFileKeys(targetFolder?.files || []);
+          await deleteFileKeysFromR2(fileKeys);
+
           folders.splice(selectedFolderIndex, 1);
           saveDataToServer();
           renderFolders();
@@ -1130,8 +1180,14 @@
         }
       });
 
-      deleteFileBtn.addEventListener('click', () => {
+      deleteFileBtn.addEventListener('click', async () => {
         if (selectedFileIndex !== -1 && currentFolderIndex !== -1) {
+          const targetItem = folders[currentFolderIndex].files[selectedFileIndex];
+          const fileKeys = Array.isArray(targetItem?.files)
+            ? collectFileKeys(targetItem.files)
+            : collectFileKeys([targetItem]);
+          await deleteFileKeysFromR2(fileKeys);
+
           folders[currentFolderIndex].files.splice(selectedFileIndex, 1);
           saveDataToServer();
           renderFiles();
