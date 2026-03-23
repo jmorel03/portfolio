@@ -407,6 +407,74 @@
             display: none;
         }
 
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            padding: 20px;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+        }
+
+        .modal-card {
+            width: min(100%, 520px);
+            background: rgba(255, 255, 255, 0.97);
+            border-radius: 18px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            overflow: hidden;
+        }
+
+        .modal-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 22px 24px 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .modal-card-header h3 {
+            margin: 0;
+            color: #334155;
+            font-size: 1.25rem;
+        }
+
+        .modal-close-btn {
+            border: none;
+            background: transparent;
+            color: #64748b;
+            font-size: 1.8rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .modal-card-body {
+            padding: 22px 24px;
+        }
+
+        .modal-help {
+            margin: -4px 0 18px;
+            color: #64748b;
+            font-size: 0.92rem;
+        }
+
+        .modal-card-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 18px 24px 24px;
+            border-top: 1px solid #e2e8f0;
+        }
+
         @media (max-width: 768px) {
             .user-identity-badge {
                 top: 12px;
@@ -572,6 +640,60 @@
             <button class="btn btn-primary" id="addAccessUserBtn">Add User</button>
         </div>
 
+        <div id="editAccessUserModal" class="modal-overlay" aria-hidden="true">
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editAccessUserTitle">
+                <div class="modal-card-header">
+                    <h3 id="editAccessUserTitle">Edit User</h3>
+                    <button type="button" class="modal-close-btn" id="closeEditAccessUserModal" aria-label="Close">&times;</button>
+                </div>
+                <div class="modal-card-body">
+                    <p class="modal-help">Update the user name and role. Leave the code blank to keep the current one.</p>
+                    <div class="setting-group">
+                        <label for="editAdminUserName">Name</label>
+                        <input type="text" id="editAdminUserName" placeholder="Enter user name">
+                    </div>
+                    <div class="form-row">
+                        <div class="setting-group">
+                            <label for="editAdminUserRole">Role</label>
+                            <select id="editAdminUserRole">
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label for="editAdminUserCode">New 4-Digit Code</label>
+                            <input type="password" id="editAdminUserCode" maxlength="4" pattern="\d{4}" placeholder="Leave blank to keep current">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-card-footer">
+                    <button type="button" class="btn btn-secondary" id="cancelEditAccessUserBtn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveEditAccessUserBtn">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="deleteDataConfirmModal" class="modal-overlay" aria-hidden="true">
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteDataConfirmTitle">
+                <div class="modal-card-header">
+                    <h3 id="deleteDataConfirmTitle">Confirm Data Deletion</h3>
+                    <button type="button" class="modal-close-btn" id="closeDeleteDataConfirmModal" aria-label="Close">&times;</button>
+                </div>
+                <div class="modal-card-body">
+                    <p class="modal-help">Enter your delete password to permanently remove all portfolio data.</p>
+                    <div class="setting-group" style="margin-bottom: 0;">
+                        <label for="deleteDataConfirmPassword">Delete Password</label>
+                        <input type="password" id="deleteDataConfirmPassword" placeholder="Enter delete password">
+                    </div>
+                </div>
+                <div class="modal-card-footer">
+                    <button type="button" class="btn btn-secondary" id="cancelDeleteDataConfirmBtn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteDataConfirmBtn">Delete All Data</button>
+                </div>
+            </div>
+        </div>
+
         <div class="settings-section">
             <div class="btn-group">
                 <button class="btn btn-primary" id="saveSettings">Save Settings</button>
@@ -582,6 +704,7 @@
 
     <script>
         let allLoginActivity = [];
+        let editingAccessUserId = null;
 
         function formatRoleLabel(role) {
             const normalized = String(role || '').toLowerCase();
@@ -655,8 +778,26 @@
         document.getElementById('deleteAllData').addEventListener('click', function() {
             if (confirm('Are you sure you want to delete ALL portfolio data? This action cannot be undone!')) {
                 if (confirm('This is your final warning. All folders, files, and data will be permanently deleted. Continue?')) {
-                    deleteAllData();
+                    openDeleteDataConfirmModal();
                 }
+            }
+        });
+
+        document.getElementById('closeDeleteDataConfirmModal').addEventListener('click', function() {
+            closeDeleteDataConfirmModal();
+        });
+
+        document.getElementById('cancelDeleteDataConfirmBtn').addEventListener('click', function() {
+            closeDeleteDataConfirmModal();
+        });
+
+        document.getElementById('confirmDeleteDataConfirmBtn').addEventListener('click', function() {
+            submitDeleteAllDataConfirm();
+        });
+
+        document.getElementById('deleteDataConfirmModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeDeleteDataConfirmModal();
             }
         });
 
@@ -671,6 +812,24 @@
 
         document.getElementById('addAccessUserBtn').addEventListener('click', function() {
             createAccessUser();
+        });
+
+        document.getElementById('closeEditAccessUserModal').addEventListener('click', function() {
+            closeEditAccessUserModal();
+        });
+
+        document.getElementById('cancelEditAccessUserBtn').addEventListener('click', function() {
+            closeEditAccessUserModal();
+        });
+
+        document.getElementById('saveEditAccessUserBtn').addEventListener('click', function() {
+            submitEditAccessUser();
+        });
+
+        document.getElementById('editAccessUserModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeEditAccessUserModal();
+            }
         });
 
         document.getElementById('toggleActivityFilters').addEventListener('click', function() {
@@ -862,13 +1021,36 @@
             }
         }
 
-        async function deleteAllData() {
-            const password = prompt('Enter your delete password to confirm deleting all portfolio data:');
-            if (password === null) {
+        function openDeleteDataConfirmModal() {
+            const modal = document.getElementById('deleteDataConfirmModal');
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('deleteDataConfirmPassword').value = '';
+            document.getElementById('deleteDataConfirmPassword').focus();
+        }
+
+        function closeDeleteDataConfirmModal() {
+            const modal = document.getElementById('deleteDataConfirmModal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.getElementById('deleteDataConfirmPassword').value = '';
+        }
+
+        async function submitDeleteAllDataConfirm() {
+            const password = document.getElementById('deleteDataConfirmPassword').value.trim();
+
+            if (!password) {
+                showError('Delete password is required.');
                 return;
             }
 
-            if (!password.trim()) {
+            await deleteAllPortfolioData(password);
+        }
+
+        async function deleteAllPortfolioData(password) {
+            const normalizedPassword = String(password || '').trim();
+
+            if (!normalizedPassword) {
                 showError('Delete password is required.');
                 return;
             }
@@ -880,12 +1062,13 @@
                         'Content-Type': 'application/json'
                     },
                     credentials: 'include',
-                    body: JSON.stringify({ password: password.trim() })
+                    body: JSON.stringify({ password: normalizedPassword })
                 });
 
                 const result = await response.json();
 
                 if (response.ok) {
+                    closeDeleteDataConfirmModal();
                     localStorage.removeItem('folders');
                     localStorage.removeItem('userSettings');
                     showSuccess('All portfolio data has been deleted.');
@@ -1071,38 +1254,49 @@
             }
         }
 
-        async function editAccessUser(userId, currentName, currentRole) {
-            const newName = prompt('Enter updated name:', currentName);
-            if (newName === null) {
+        function openEditAccessUserModal(userId, currentName, currentRole) {
+            editingAccessUserId = userId;
+            document.getElementById('editAdminUserName').value = currentName || '';
+            document.getElementById('editAdminUserRole').value = currentRole || 'viewer';
+            document.getElementById('editAdminUserCode').value = '';
+            const modal = document.getElementById('editAccessUserModal');
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('editAdminUserName').focus();
+        }
+
+        function closeEditAccessUserModal() {
+            editingAccessUserId = null;
+            const modal = document.getElementById('editAccessUserModal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.getElementById('editAdminUserName').value = '';
+            document.getElementById('editAdminUserRole').value = 'viewer';
+            document.getElementById('editAdminUserCode').value = '';
+        }
+
+        function editAccessUser(userId, currentName, currentRole) {
+            openEditAccessUserModal(userId, currentName, currentRole);
+        }
+
+        async function submitEditAccessUser() {
+            if (!editingAccessUserId) {
                 return;
             }
 
-            const trimmedName = newName.trim();
-            if (!trimmedName) {
-                showError('Name cannot be empty.');
-                return;
-            }
-
-            const roleInput = prompt('Enter role (viewer, editor, admin):', currentRole);
-            if (roleInput === null) {
-                return;
-            }
-
-            const normalizedRole = roleInput.trim().toLowerCase();
-            if (!['viewer', 'editor', 'admin'].includes(normalizedRole)) {
-                showError('Invalid role. Use viewer, editor, or admin.');
-                return;
-            }
-
-            const newCode = prompt('Enter new 4-digit code (leave blank to keep current):', '');
-            if (newCode === null) {
-                return;
-            }
+            const trimmedName = document.getElementById('editAdminUserName').value.trim();
+            const normalizedRole = document.getElementById('editAdminUserRole').value;
+            const newCode = document.getElementById('editAdminUserCode').value.trim();
 
             const payload = {
                 name: trimmedName,
                 role: normalizedRole
             };
+
+            if (!trimmedName) {
+                showError('Name cannot be empty.');
+                return;
+            }
 
             if (newCode.trim()) {
                 if (!/^\d{4}$/.test(newCode.trim())) {
@@ -1113,7 +1307,7 @@
             }
 
             try {
-                const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
+                const response = await fetch(`/api/access-users/${encodeURIComponent(editingAccessUserId)}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1128,6 +1322,7 @@
                     return;
                 }
 
+                closeEditAccessUserModal();
                 showSuccess('User updated successfully.');
                 await loadAccessUsers();
             } catch (error) {

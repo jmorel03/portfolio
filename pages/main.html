@@ -215,6 +215,24 @@
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
         }
 
+        .folder.drag-enabled {
+          cursor: grab;
+        }
+
+        .folder.drag-enabled:active {
+          cursor: grabbing;
+        }
+
+        .folder.dragging {
+          opacity: 0.45;
+          transform: scale(0.98);
+        }
+
+        .folder.drop-target {
+          border-color: #667eea;
+          box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.22);
+        }
+
         .folder .icon {
             font-size: 48px;
             margin-bottom: 15px;
@@ -546,6 +564,24 @@
             background: #ffffff;
         }
 
+        .file-item.drag-enabled {
+          cursor: grab;
+        }
+
+        .file-item.drag-enabled:active {
+          cursor: grabbing;
+        }
+
+        .file-item.dragging {
+          opacity: 0.45;
+          transform: scale(0.98);
+        }
+
+        .file-item.drop-target {
+          border-color: #667eea;
+          box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.22);
+        }
+
         .file-item .icon {
             font-size: 36px;
             margin-bottom: 12px;
@@ -812,7 +848,6 @@
 
     <div id="folderContainer">
         <h1>Welcome to Your Portfolio</h1>
-        <p>Organize your files, photos, and videos in beautiful folders</p>
         <button id="addFolderBtn">Create New Folder</button>
         <div id="folders"></div>
     </div>
@@ -1131,6 +1166,8 @@
       let selectedFolderIndex = -1;
       let currentFolderIndex = -1;
       let selectedFileIndex = -1;
+      let draggedFolderIndex = -1;
+      let draggedFileIndex = -1;
       let toastTimeout;
 
       function showToast(message, type = 'error') {
@@ -1350,8 +1387,81 @@
             contextMenu.style.left = e.pageX + 'px';
             contextMenu.style.top = e.pageY + 'px';
           });
+
+          configureFolderDragAndDrop(folderDiv, index);
           foldersDiv.appendChild(folderDiv);
         });
+      }
+
+      function configureFolderDragAndDrop(folderDiv, index) {
+        if (!hasEditorAccess()) {
+          folderDiv.draggable = false;
+          folderDiv.classList.remove('drag-enabled');
+          return;
+        }
+
+        folderDiv.draggable = true;
+        folderDiv.classList.add('drag-enabled');
+
+        folderDiv.addEventListener('dragstart', (event) => {
+          draggedFolderIndex = index;
+          folderDiv.classList.add('dragging');
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', String(index));
+        });
+
+        folderDiv.addEventListener('dragend', () => {
+          folderDiv.classList.remove('dragging');
+          foldersDiv.querySelectorAll('.folder.drop-target').forEach((entry) => entry.classList.remove('drop-target'));
+          draggedFolderIndex = -1;
+        });
+
+        folderDiv.addEventListener('dragover', (event) => {
+          if (draggedFolderIndex === -1 || draggedFolderIndex === index) {
+            return;
+          }
+
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+          folderDiv.classList.add('drop-target');
+        });
+
+        folderDiv.addEventListener('dragleave', () => {
+          folderDiv.classList.remove('drop-target');
+        });
+
+        folderDiv.addEventListener('drop', async (event) => {
+          event.preventDefault();
+          folderDiv.classList.remove('drop-target');
+
+          if (draggedFolderIndex === -1 || draggedFolderIndex === index) {
+            return;
+          }
+
+          const moved = moveFolder(draggedFolderIndex, index);
+          draggedFolderIndex = -1;
+
+          if (!moved) {
+            return;
+          }
+
+          renderFolders();
+          const saved = await saveDataToServer();
+          if (saved) {
+            showToast('Folder moved.', 'success');
+          }
+        });
+      }
+
+      function moveFolder(sourceIndex, targetIndex) {
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= folders.length || targetIndex >= folders.length) {
+          return false;
+        }
+
+        const [movedFolder] = folders.splice(sourceIndex, 1);
+        const normalizedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+        folders.splice(normalizedTargetIndex, 0, movedFolder);
+        return true;
       }
 
       function openFolder(index) {
@@ -1435,8 +1545,90 @@
             });
           }
 
+          configureFileItemDragAndDrop(fileDiv, index);
+
           filesList.appendChild(fileDiv);
         });
+      }
+
+      function configureFileItemDragAndDrop(fileDiv, index) {
+        if (!hasEditorAccess()) {
+          fileDiv.draggable = false;
+          fileDiv.classList.remove('drag-enabled');
+          return;
+        }
+
+        fileDiv.draggable = true;
+        fileDiv.classList.add('drag-enabled');
+
+        fileDiv.addEventListener('dragstart', (event) => {
+          draggedFileIndex = index;
+          fileDiv.classList.add('dragging');
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', String(index));
+        });
+
+        fileDiv.addEventListener('dragend', () => {
+          fileDiv.classList.remove('dragging');
+          filesList.querySelectorAll('.file-item.drop-target').forEach((entry) => entry.classList.remove('drop-target'));
+          draggedFileIndex = -1;
+        });
+
+        fileDiv.addEventListener('dragover', (event) => {
+          if (draggedFileIndex === -1 || draggedFileIndex === index) {
+            return;
+          }
+
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+          fileDiv.classList.add('drop-target');
+        });
+
+        fileDiv.addEventListener('dragleave', () => {
+          fileDiv.classList.remove('drop-target');
+        });
+
+        fileDiv.addEventListener('drop', async (event) => {
+          event.preventDefault();
+          fileDiv.classList.remove('drop-target');
+
+          if (draggedFileIndex === -1 || draggedFileIndex === index) {
+            return;
+          }
+
+          const moved = moveFileWithinCurrentFolder(draggedFileIndex, index);
+          draggedFileIndex = -1;
+
+          if (!moved) {
+            return;
+          }
+
+          renderFiles();
+          const saved = await saveDataToServer();
+          if (saved) {
+            showToast('Item moved.', 'success');
+          }
+        });
+      }
+
+      function moveFileWithinCurrentFolder(sourceIndex, targetIndex) {
+        if (currentFolderIndex === -1) {
+          return false;
+        }
+
+        const items = folders[currentFolderIndex]?.files;
+        if (!Array.isArray(items)) {
+          return false;
+        }
+
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= items.length || targetIndex >= items.length) {
+          return false;
+        }
+
+        const [movedItem] = items.splice(sourceIndex, 1);
+        const normalizedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+        items.splice(normalizedTargetIndex, 0, movedItem);
+        return true;
       }
 
       // Hide context menus when clicking elsewhere
