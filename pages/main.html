@@ -1688,8 +1688,7 @@
         }
 
         const [movedFolder] = folders.splice(sourceIndex, 1);
-        const normalizedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-        folders.splice(normalizedTargetIndex, 0, movedFolder);
+        folders.splice(targetIndex, 0, movedFolder);
         return true;
       }
 
@@ -1866,8 +1865,7 @@
         }
 
         const [movedItem] = items.splice(sourceIndex, 1);
-        const normalizedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-        items.splice(normalizedTargetIndex, 0, movedItem);
+        items.splice(targetIndex, 0, movedItem);
         return true;
       }
 
