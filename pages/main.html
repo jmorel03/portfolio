@@ -525,6 +525,34 @@
             transition: width 0.2s ease;
         }
 
+        .form-error {
+            color: #ef4444;
+            font-size: 0.82rem;
+            margin: 4px 0 2px;
+            min-height: 1em;
+            display: none;
+        }
+
+        /* Plain-text file viewer (reuses lightbox overlay) */
+        .file-text-viewer {
+            max-width: min(80vw, 820px);
+            max-height: 68vh;
+            overflow: auto;
+            background: #1e1e2e;
+            border-radius: 10px;
+            padding: 20px 24px;
+            text-align: left;
+        }
+        .file-text-viewer pre {
+            margin: 0;
+            color: #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.88rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+
         .drag-text {
             color: #667eea;
             font-weight: 600;
@@ -930,6 +958,7 @@
     <div id="addFolderForm">
         <h3>Add New Folder</h3>
         <input type="text" id="folderName" placeholder="Folder Name">
+        <p class="form-error" id="folderFormError"></p>
         <select id="folderType">
             <option value="Files">Files</option>
             <option value="Photos">Photos</option>
@@ -980,6 +1009,7 @@
             </div>
             <div class="modal-body">
                 <input type="text" id="fileName" placeholder="File Name">
+                <p class="form-error" id="fileModalError"></p>
                 <div class="drag-drop-area" id="fileContentArea">
                     <div class="drop-zone-content">
                         <div class="drop-icon">📁</div>
@@ -1008,6 +1038,7 @@
             </div>
             <div class="modal-body">
                 <input type="text" id="subFolderName" placeholder="Folder Name">
+                <p class="form-error" id="subFolderModalError"></p>
             </div>
             <div class="modal-footer">
                 <button id="cancelSubFolder">Cancel</button>
@@ -1027,7 +1058,7 @@
         if (res.ok) {
           window.location.href = '/';
         } else {
-          alert('Logout failed. Please refresh and try again.');
+          showToast('Logout failed. Please refresh and try again.');
         }
       });
 
@@ -1163,7 +1194,7 @@
           folders = JSON.parse(localStorage.getItem('folders')) || [];
           folders = folders.map(folder => ({ ...folder, files: folder.files || [] }));
           isOnline = false;
-          alert('Unable to connect to server. Using local data. Changes will not sync across devices.');
+          showToast('Unable to connect to server. Using local data — changes will not sync across devices.');
         }
       }
 
@@ -1197,7 +1228,7 @@
           console.error('Error saving data to server:', error);
           // Fallback to localStorage
           localStorage.setItem('folders', JSON.stringify(folders));
-          alert('Unable to save to server. Data saved locally only.');
+          showToast('Unable to save to server. Data saved locally only.');
           return false;
         }
       }
@@ -1293,6 +1324,37 @@
         toastTimeout = setTimeout(() => {
           toast.classList.remove('show');
         }, 3200);
+      }
+
+      function showFormError(id, message) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = message;
+        el.style.display = 'block';
+      }
+
+      function clearFormError(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = '';
+        el.style.display = 'none';
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function openFileViewer(name, content) {
+        const overlay = document.getElementById('lightboxOverlay');
+        const contentEl = document.getElementById('lightboxContent');
+        const caption = document.getElementById('lightboxCaption');
+        contentEl.innerHTML = `<div class="file-text-viewer"><pre>${escapeHtml(content)}</pre></div>`;
+        caption.textContent = name || '';
+        overlay.classList.add('open');
       }
 
       // Initialize async data loading
@@ -1395,7 +1457,7 @@
           if (currentFolderIndex !== -1) {
             const folderType = folders[currentFolderIndex].type;
             if (!validateFileType(file, folderType)) {
-              alert(`This file type is not allowed in ${folderType} folders. Please select a different file.`);
+              showToast(`File type not allowed in ${folderType} folders. Please select a different file.`);
               // Reset the file input
               fileInput.value = '';
               return;
@@ -1463,13 +1525,13 @@
               `;
             } catch (e) {
               console.error('Error parsing upload response:', e);
-              alert('Upload succeeded but response was unexpected. Please try again.');
+              showToast('Upload succeeded but response was unexpected. Please try again.');
               resetDropZone();
               fileInput.value = '';
             }
           } else {
             console.error('Upload failed with status:', xhr.status);
-            alert('Failed to upload file. Please try again.');
+            showToast('Failed to upload file. Please try again.');
             resetDropZone();
             fileInput.value = '';
           }
@@ -1477,7 +1539,7 @@
 
         xhr.addEventListener('error', () => {
           console.error('Upload network error');
-          alert('Failed to upload file. Please check your connection and try again.');
+          showToast('Upload failed. Please check your connection and try again.');
           resetDropZone();
           fileInput.value = '';
         });
@@ -1516,7 +1578,7 @@
           if (currentFolderIndex !== -1) {
             const folderType = folders[currentFolderIndex].type;
             if (!validateFileType(file, folderType)) {
-              alert(`This file type is not allowed in ${folderType} folders. Please select a different file.`);
+              showToast(`File type not allowed in ${folderType} folders. Please select a different file.`);
               return;
             }
           }
@@ -1711,7 +1773,7 @@
               if (looksLikeImage || looksLikeVideo) {
                 openLightbox(file.content, file.name, looksLikeVideo);
               } else {
-                alert(`File: ${file.name}\nContent: ${file.content}`);
+                openFileViewer(file.name, file.content);
               }
             });
             fileDiv.addEventListener('contextmenu', (e) => {
@@ -1962,6 +2024,7 @@
         fileNameInput.value = '';
         fileContentInput.value = '';
         fileUrlInput.value = '';
+          clearFormError('fileModalError');
         resetDropZone();
       });
 
@@ -1976,6 +2039,7 @@
       closeSubFolderModal.addEventListener('click', () => {
         addSubFolderModal.style.display = 'none';
         subFolderNameInput.value = '';
+          clearFormError('subFolderModalError');
       });
 
       saveSubFolderBtn.addEventListener('click', () => {
@@ -1986,13 +2050,13 @@
         const name = subFolderNameInput.value.trim();
         
         if (!name) {
-          alert('Please enter a subfolder name before creating.');
+          showFormError('subFolderModalError', 'Please enter a folder name.');
           subFolderNameInput.focus();
           return;
         }
-        
+        clearFormError('subFolderModalError');
         if (currentFolderIndex === -1) {
-          alert('Please select a folder first.');
+          showToast('Please open a folder first.');
           return;
         }
         
@@ -2014,6 +2078,7 @@
       cancelSubFolderBtn.addEventListener('click', () => {
         addSubFolderModal.style.display = 'none';
         subFolderNameInput.value = '';
+          clearFormError('subFolderModalError');
       });
 
       saveFileBtn.addEventListener('click', () => {
@@ -2031,18 +2096,18 @@
         }
         
         if (!name) {
-          alert('Please enter a file name before saving.');
+          showFormError('fileModalError', 'Please enter a file name.');
           fileNameInput.focus();
           return;
         }
-        
+
         if (!content) {
-          alert('Please add file content (drag & drop a file or enter a URL) before saving.');
+          showFormError('fileModalError', 'Please add a file (drag & drop or enter a URL).');
           return;
         }
-        
+        clearFormError('fileModalError');
         if (currentFolderIndex === -1) {
-          alert('Please select a folder first.');
+          showToast('Please open a folder first.');
           return;
         }
         
@@ -2064,6 +2129,7 @@
         fileNameInput.value = '';
         fileContentInput.value = '';
         fileUrlInput.value = '';
+          clearFormError('fileModalError');
         resetDropZone();
       });
 
@@ -2084,10 +2150,11 @@
         const type = folderTypeSelect.value;
         
         if (!name) {
-          alert('Please enter a folder name before creating.');
+          showFormError('folderFormError', 'Please enter a folder name.');
           folderNameInput.focus();
           return;
         }
+        clearFormError('folderFormError');
         
         if (name) {
           folders.push({ name, type, files: [] });
@@ -2101,6 +2168,7 @@
       cancelFolderBtn.addEventListener('click', () => {
         addFolderForm.style.display = 'none';
         folderNameInput.value = '';
+          clearFormError('folderFormError');
       });
 
       // Close modals when clicking outside

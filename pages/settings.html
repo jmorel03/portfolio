@@ -769,18 +769,12 @@
 
         // Reset settings
         document.getElementById('resetSettings').addEventListener('click', function() {
-            if (confirm('Are you sure you want to reset all settings to defaults?')) {
-                resetSettings();
-            }
+              resetSettings();
         });
 
         // Delete all data
         document.getElementById('deleteAllData').addEventListener('click', function() {
-            if (confirm('Are you sure you want to delete ALL portfolio data? This action cannot be undone!')) {
-                if (confirm('This is your final warning. All folders, files, and data will be permanently deleted. Continue?')) {
-                    openDeleteDataConfirmModal();
-                }
-            }
+                openDeleteDataConfirmModal();
         });
 
         document.getElementById('closeDeleteDataConfirmModal').addEventListener('click', function() {
@@ -1332,11 +1326,16 @@
         }
 
         async function deleteAccessUser(userId, userName) {
-            if (!confirm(`Remove ${userName}?`)) {
-                return;
-            }
+                if (pendingDeleteUserId === userId) {
+                    pendingDeleteUserId = null;
+                    clearPendingDeleteTimer();
+                } else {
+                    pendingDeleteUserId = userId;
+                    showPendingDeleteToast(userName);
+                    return;
+                }
 
-            try {
+                try {
                 const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
                     method: 'DELETE',
                     credentials: 'include'
@@ -1355,6 +1354,29 @@
                 showError('Network error. Please try again.');
             }
         }
+
+            let pendingDeleteUserId = null;
+            let pendingDeleteTimer = null;
+
+            function clearPendingDeleteTimer() {
+                if (pendingDeleteTimer) {
+                    clearTimeout(pendingDeleteTimer);
+                    pendingDeleteTimer = null;
+                }
+            }
+
+            function showPendingDeleteToast(userName) {
+                clearPendingDeleteTimer();
+                showError(`Tap "Remove" again to confirm deleting ${userName}.`);
+                pendingDeleteTimer = setTimeout(() => {
+                    pendingDeleteUserId = null;
+                    pendingDeleteTimer = null;
+                    const errorEl = document.getElementById('errorMessage');
+                    if (errorEl && errorEl.textContent.startsWith('Tap "Remove"')) {
+                        errorEl.style.display = 'none';
+                    }
+                }, 4000);
+            }
 
         function getDefaultSettings() {
             return {
