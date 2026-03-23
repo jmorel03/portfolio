@@ -829,6 +829,53 @@
             padding: 10px 14px;
           }
         }
+
+        /* Lightbox */
+        #lightboxOverlay {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.88);
+          z-index: 9000;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          gap: 12px;
+        }
+        #lightboxOverlay.open {
+          display: flex;
+        }
+        #lightboxOverlay img,
+        #lightboxOverlay video {
+          max-width: min(92vw, 1100px);
+          max-height: 80vh;
+          border-radius: 8px;
+          box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+          object-fit: contain;
+          background: #000;
+        }
+        #lightboxCaption {
+          color: #e2e8f0;
+          font-size: 0.95rem;
+          max-width: min(92vw, 1100px);
+          text-align: center;
+          word-break: break-all;
+        }
+        #lightboxClose {
+          position: fixed;
+          top: 18px;
+          right: 22px;
+          background: none;
+          border: none;
+          color: #fff;
+          font-size: 2rem;
+          cursor: pointer;
+          line-height: 1;
+          opacity: 0.8;
+          transition: opacity 0.15s;
+          z-index: 9001;
+        }
+        #lightboxClose:hover { opacity: 1; }
     </style>
 </head>
 <body>
@@ -873,6 +920,13 @@
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
+
+    <!-- Lightbox -->
+    <div id="lightboxOverlay" role="dialog" aria-modal="true" aria-label="Media viewer">
+      <button id="lightboxClose" aria-label="Close">&times;</button>
+      <div id="lightboxContent"></div>
+      <div id="lightboxCaption"></div>
+    </div>
 
     <div id="folderView">
         <div id="folderViewHeader">
@@ -1249,6 +1303,31 @@
         return /\.(mp4|avi|mov|mkv|wmv|flv|webm|m4v)(\?|$)/.test(source);
       }
 
+      function openLightbox(src, name, isVideo) {
+        const overlay = document.getElementById('lightboxOverlay');
+        const content = document.getElementById('lightboxContent');
+        const caption = document.getElementById('lightboxCaption');
+        content.innerHTML = isVideo
+          ? `<video src="${src}" controls autoplay playsinline style="max-width:min(92vw,1100px);max-height:80vh;"></video>`
+          : `<img src="${src}" alt="${name}">`;
+        caption.textContent = name || '';
+        overlay.classList.add('open');
+      }
+
+      function closeLightbox() {
+        const overlay = document.getElementById('lightboxOverlay');
+        overlay.classList.remove('open');
+        document.getElementById('lightboxContent').innerHTML = '';
+      }
+
+      document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+      document.getElementById('lightboxOverlay').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('lightboxOverlay')) closeLightbox();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeLightbox();
+      });
+
       function createFilePreviewHtml(file, folderType) {
         const looksLikeImage = folderType === 'Photos' || isImageFile(file);
         const looksLikeVideo = folderType === 'Videos' || isVideoFile(file);
@@ -1570,8 +1649,10 @@
               <div class="name">${file.name}</div>
             `;
             fileDiv.addEventListener('click', () => {
-              if (folder.type === 'Photos' || folder.type === 'Videos') {
-                window.open(file.content, '_blank');
+              const looksLikeImage = folder.type === 'Photos' || isImageFile(file);
+              const looksLikeVideo = folder.type === 'Videos' || isVideoFile(file);
+              if (looksLikeImage || looksLikeVideo) {
+                openLightbox(file.content, file.name, looksLikeVideo);
               } else {
                 alert(`File: ${file.name}\nContent: ${file.content}`);
               }
