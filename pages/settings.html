@@ -674,6 +674,22 @@
             </div>
         </div>
 
+        <div id="codeInUseModal" class="modal-overlay" aria-hidden="true">
+            <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="codeInUseTitle">
+                <div class="modal-card-header">
+                    <h3 id="codeInUseTitle">Code Already In Use</h3>
+                    <button type="button" class="modal-close-btn" id="closeCodeInUseModalX" aria-label="Close">&times;</button>
+                </div>
+                <div class="modal-card-body">
+                    <p style="color:#dc2626;font-weight:600;margin-bottom:10px;">&#9888;&#65039; That 4-digit code is already assigned to another user.</p>
+                    <p style="color:#64748b;font-size:0.95rem;">Please choose a different code &mdash; each user must have a unique access code.</p>
+                </div>
+                <div class="modal-card-footer">
+                    <button type="button" class="btn btn-primary" id="closeCodeInUseModalBtn">OK, I'll choose another</button>
+                </div>
+            </div>
+        </div>
+
         <div id="deleteDataConfirmModal" class="modal-overlay" aria-hidden="true">
             <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteDataConfirmTitle">
                 <div class="modal-card-header">
@@ -806,6 +822,20 @@
 
         document.getElementById('addAccessUserBtn').addEventListener('click', function() {
             createAccessUser();
+        });
+
+        document.getElementById('closeCodeInUseModalX').addEventListener('click', function() {
+            closeCodeInUseModal();
+        });
+
+        document.getElementById('closeCodeInUseModalBtn').addEventListener('click', function() {
+            closeCodeInUseModal();
+        });
+
+        document.getElementById('codeInUseModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeCodeInUseModal();
+            }
         });
 
         document.getElementById('closeEditAccessUserModal').addEventListener('click', function() {
@@ -1231,6 +1261,10 @@
                 });
 
                 const result = await response.json();
+                if (response.status === 409) {
+                    showCodeTakenPopup('adminUserCode');
+                    return;
+                }
                 if (!response.ok) {
                     showError(result.error || 'Unable to add user.');
                     return;
@@ -1311,6 +1345,10 @@
                 });
 
                 const result = await response.json();
+                if (response.status === 409) {
+                    showCodeTakenPopup('editAdminUserCode');
+                    return;
+                }
                 if (!response.ok) {
                     showError(result.error || 'Unable to update user.');
                     return;
@@ -1382,6 +1420,28 @@
             return {
                 twoFactor: false
             };
+        }
+
+        function showCodeTakenPopup(inputId) {
+            if (inputId) {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.style.borderColor = '#dc2626';
+                    input.focus();
+                    input.addEventListener('input', function clearHighlight() {
+                        input.style.borderColor = '';
+                    }, { once: true });
+                }
+            }
+            const modal = document.getElementById('codeInUseModal');
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCodeInUseModal() {
+            const modal = document.getElementById('codeInUseModal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
         }
 
         function showSuccess(message) {
