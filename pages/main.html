@@ -973,6 +973,7 @@
     </div>
 
     <div id="fileContextMenu" class="context-menu">
+      <button id="moveFileOption">Move</button>
         <button id="deleteFile">Delete File</button>
     </div>
 
@@ -1046,6 +1047,23 @@
             </div>
         </div>
     </div>
+
+        <div id="moveFileModal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Move Item</h3>
+              <button id="closeMoveFileModal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <select id="moveDestinationSelect"></select>
+              <p class="form-error" id="moveFileModalError"></p>
+            </div>
+            <div class="modal-footer">
+              <button id="cancelMoveFile">Cancel</button>
+              <button id="confirmMoveFile">Move</button>
+            </div>
+          </div>
+        </div>
 
     <script>
       document.getElementById('accountBtn').addEventListener('click', () => {
@@ -1243,6 +1261,7 @@
       const contextMenu = document.getElementById('contextMenu');
       const deleteFolderBtn = document.getElementById('deleteFolder');
       const fileContextMenu = document.getElementById('fileContextMenu');
+      const moveFileOptionBtn = document.getElementById('moveFileOption');
       const deleteFileBtn = document.getElementById('deleteFile');
       const folderView = document.getElementById('folderView');
       const backToFolders = document.getElementById('backToFolders');
@@ -1263,6 +1282,11 @@
       const subFolderNameInput = document.getElementById('subFolderName');
       const saveSubFolderBtn = document.getElementById('saveSubFolder');
       const cancelSubFolderBtn = document.getElementById('cancelSubFolder');
+      const moveFileModal = document.getElementById('moveFileModal');
+      const closeMoveFileModalBtn = document.getElementById('closeMoveFileModal');
+      const cancelMoveFileBtn = document.getElementById('cancelMoveFile');
+      const confirmMoveFileBtn = document.getElementById('confirmMoveFile');
+      const moveDestinationSelect = document.getElementById('moveDestinationSelect');
       const toast = document.getElementById('toast');
 
       // Drag and drop variables
@@ -1279,6 +1303,7 @@
       let selectedFolderIndex = -1;
       let currentFolderIndex = -1;
       let selectedFileIndex = -1;
+      let selectedFileContext = null;
       let draggedFolderIndex = -1;
       let draggedFileIndex = -1;
       let subfolderPath = []; // stack of file-array indices for nested subfolder navigation
@@ -1293,6 +1318,136 @@
           arr = arr[idx].files;
         }
         return arr;
+      }
+
+      function getFilesArrayByPath(folderIndex, path = []) {
+        if (folderIndex < 0 || folderIndex >= folders.length) return null;
+        let arr = folders[folderIndex].files;
+        for (const idx of path) {
+          if (!arr || !arr[idx] || !Array.isArray(arr[idx].files)) return null;
+          arr = arr[idx].files;
+        }
+        return arr;
+      }
+
+      function getFolderByPath(folderIndex, path = []) {
+        if (folderIndex < 0 || folderIndex >= folders.length) return null;
+        if (path.length === 0) return folders[folderIndex];
+
+        let arr = folders[folderIndex].files;
+        let folder = null;
+        for (const idx of path) {
+          folder = arr?.[idx] || null;
+          if (!folder || !Array.isArray(folder.files)) return null;
+          arr = folder.files;
+        }
+
+        return folder;
+      }
+
+      function pathsMatch(pathA = [], pathB = []) {
+        if (pathA.length !== pathB.length) return false;
+        for (let i = 0; i < pathA.length; i += 1) {
+          if (pathA[i] !== pathB[i]) return false;
+        }
+        return true;
+      }
+
+      function buildMoveDestinationOptions(sourceContext) {
+        const options = [];
+        const sourceItems = getFilesArrayByPath(sourceContext.folderIndex, sourceContext.path);
+        const sourceEntry = sourceItems?.[sourceContext.itemIndex];
+
+        function walkFolder(folderIndex, path, label) {
+          const sameContainer = folderIndex === sourceContext.folderIndex && pathsMatch(path, sourceContext.path);
+          const destinationFolder = getFolderByPath(folderIndex, path);
+          const invalidByHierarchy = Array.isArray(sourceEntry?.files)
+            && destinationFolder
+            && (destinationFolder === sourceEntry || isFolderDescendant(sourceEntry, destinationFolder));
+
+          if (!sameContainer && !invalidByHierarchy) {
+            options.push({
+              value: `${folderIndex}|${path.join(',')}`,
+              label
+            });
+          }
+
+          const entries = getFilesArrayByPath(folderIndex, path);
+          if (!Array.isArray(entries)) return;
+          entries.forEach((entry, idx) => {
+            if (entry && Array.isArray(entry.files)) {
+              walkFolder(folderIndex, [...path, idx], `${label} / ${entry.name}`);
+            }
+          });
+        }
+
+        folders.forEach((folder, folderIndex) => {
+          walkFolder(folderIndex, [], folder.name || `Folder ${folderIndex + 1}`);
+        });
+
+        return options;
+      }
+
+      function hideMoveFileModal() {
+        moveFileModal.style.display = 'none';
+        moveDestinationSelect.innerHTML = '';
+        clearFormError('moveFileModalError');
+      }
+
+      function openMoveFileModal() {
+        if (!selectedFileContext) {
+          showToast('No item selected to move.');
+          return;
+        }
+
+        const options = buildMoveDestinationOptions(selectedFileContext);
+        if (options.length === 0) {
+          showToast('No valid destination folders available for this item.');
+          return;
+        }
+
+        moveDestinationSelect.innerHTML = '';
+        options.forEach((option) => {
+          const optionEl = document.createElement('option');
+          optionEl.value = option.value;
+          optionEl.textContent = option.label;
+          moveDestinationSelect.appendChild(optionEl);
+        });
+
+        clearFormError('moveFileModalError');
+        fileContextMenu.style.display = 'none';
+        moveFileModal.style.display = 'block';
+      }
+
+      function parseDestinationValue(value) {
+        const [folderIndexRaw, pathRaw = ''] = String(value || '').split('|');
+        const folderIndex = Number(folderIndexRaw);
+        if (!Number.isInteger(folderIndex)) {
+          return null;
+        }
+
+        const path = pathRaw
+          ? pathRaw.split(',').filter(Boolean).map((part) => Number(part)).filter((part) => Number.isInteger(part))
+          : [];
+
+        return { folderIndex, path };
+      }
+
+      function moveItemToDestination(sourceContext, destinationFolderIndex, destinationPath) {
+        const sourceItems = getFilesArrayByPath(sourceContext.folderIndex, sourceContext.path);
+        if (!Array.isArray(sourceItems)) return null;
+        if (sourceContext.itemIndex < 0 || sourceContext.itemIndex >= sourceItems.length) return null;
+
+        const [entry] = sourceItems.splice(sourceContext.itemIndex, 1);
+        const destinationItems = getFilesArrayByPath(destinationFolderIndex, destinationPath);
+        if (!Array.isArray(destinationItems)) {
+          sourceItems.splice(sourceContext.itemIndex, 0, entry);
+          return null;
+        }
+
+        destinationItems.push(entry);
+        const destinationFolder = getFolderByPath(destinationFolderIndex, destinationPath);
+        return destinationFolder?.name || 'folder';
       }
 
       // Rebuilds the breadcrumb to reflect the current subfolder depth
@@ -1754,6 +1909,11 @@
 
               e.preventDefault();
               selectedFileIndex = index;
+              selectedFileContext = {
+                folderIndex: currentFolderIndex,
+                path: [...subfolderPath],
+                itemIndex: index
+              };
               fileContextMenu.style.display = 'block';
               fileContextMenu.style.left = e.pageX + 'px';
               fileContextMenu.style.top = e.pageY + 'px';
@@ -1782,6 +1942,11 @@
 
               e.preventDefault();
               selectedFileIndex = index;
+              selectedFileContext = {
+                folderIndex: currentFolderIndex,
+                path: [...subfolderPath],
+                itemIndex: index
+              };
               fileContextMenu.style.display = 'block';
               fileContextMenu.style.left = e.pageX + 'px';
               fileContextMenu.style.top = e.pageY + 'px';
@@ -2055,6 +2220,57 @@
           }
           fileContextMenu.style.display = 'none';
           selectedFileIndex = -1;
+          selectedFileContext = null;
+        }
+      });
+
+      moveFileOptionBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          fileContextMenu.style.display = 'none';
+          return;
+        }
+
+        openMoveFileModal();
+      });
+
+      closeMoveFileModalBtn.addEventListener('click', () => {
+        hideMoveFileModal();
+      });
+
+      cancelMoveFileBtn.addEventListener('click', () => {
+        hideMoveFileModal();
+      });
+
+      confirmMoveFileBtn.addEventListener('click', async () => {
+        if (!ensureEditorAccess()) {
+          hideMoveFileModal();
+          return;
+        }
+
+        if (!selectedFileContext) {
+          showFormError('moveFileModalError', 'No item selected to move.');
+          return;
+        }
+
+        const destination = parseDestinationValue(moveDestinationSelect.value);
+        if (!destination) {
+          showFormError('moveFileModalError', 'Please choose a valid destination folder.');
+          return;
+        }
+
+        const movedInto = moveItemToDestination(selectedFileContext, destination.folderIndex, destination.path);
+        if (!movedInto) {
+          showFormError('moveFileModalError', 'Unable to move this item to that destination.');
+          return;
+        }
+
+        selectedFileIndex = -1;
+        selectedFileContext = null;
+        hideMoveFileModal();
+        rerenderCurrentView();
+        const saved = await saveDataToServer();
+        if (saved) {
+          showToast(`Moved into ${movedInto}.`, 'success');
         }
       });
 
@@ -2258,6 +2474,12 @@
         if (e.target === addSubFolderModal) {
           addSubFolderModal.style.display = 'none';
           subFolderNameInput.value = '';
+        }
+      });
+
+      moveFileModal.addEventListener('click', (e) => {
+        if (e.target === moveFileModal) {
+          hideMoveFileModal();
         }
       });
     </script>
