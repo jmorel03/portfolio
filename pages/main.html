@@ -428,7 +428,82 @@
             border-radius: 12px;
             font-size: 1rem;
             transition: border-color 0.3s ease;
-            box-sizing: border-box;
+        }
+
+        /* ── Move-picker tree ── */
+        .move-picker-tree {
+            max-height: 340px;
+            overflow-y: auto;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+            margin-bottom: 6px;
+        }
+        .move-picker-tree::-webkit-scrollbar { width: 6px; }
+        .move-picker-tree::-webkit-scrollbar-track { background: transparent; }
+        .move-picker-tree::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 3px; }
+        .move-tree-row {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            padding: 0;
+            cursor: pointer;
+            border-bottom: 1px solid #f1f5f9;
+            transition: background 0.12s ease;
+            user-select: none;
+        }
+        .move-tree-row:last-child { border-bottom: none; }
+        .move-tree-row:hover { background: #eff6ff; }
+        .move-tree-row.selected {
+            background: linear-gradient(90deg, #eff6ff, #e0e7ff);
+            outline: 2px solid #6366f1;
+            outline-offset: -2px;
+            border-radius: 8px;
+        }
+        .move-tree-indent {
+            flex-shrink: 0;
+        }
+        .move-tree-toggle {
+            flex-shrink: 0;
+            width: 22px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .move-tree-toggle:hover { color: #6366f1; }
+        .move-tree-icon {
+            flex-shrink: 0;
+            font-size: 1.1rem;
+            padding: 0 6px 0 2px;
+            line-height: 36px;
+        }
+        .move-tree-label {
+            flex: 1;
+            min-width: 0;
+            padding: 8px 12px 8px 0;
+            font-size: 0.92rem;
+            font-weight: 500;
+            color: #1e293b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+        .move-tree-label small {
+            display: block;
+            font-size: 0.76rem;
+            font-weight: 400;
+            color: #64748b;
+        }
+        .move-tree-empty {
+            padding: 22px;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.9rem;
         }
 
         .drag-drop-area {
@@ -1146,12 +1221,14 @@
               <button id="closeMoveFileModal">&times;</button>
             </div>
             <div class="modal-body">
-              <select id="moveDestinationSelect"></select>
+              <p style="font-size:0.88rem;color:#64748b;margin:0 0 12px;">Select a destination folder:</p>
+              <div class="move-picker-tree" id="movePickerTree"></div>
+              <select id="moveDestinationSelect" style="display:none" aria-hidden="true"></select>
               <p class="form-error" id="moveFileModalError"></p>
             </div>
             <div class="modal-footer">
               <button id="cancelMoveFile">Cancel</button>
-              <button id="confirmMoveFile">Move</button>
+              <button id="confirmMoveFile">Move Here</button>
             </div>
           </div>
         </div>
@@ -1504,7 +1581,10 @@
           if (!sameContainer && !invalidByHierarchy) {
             options.push({
               value: `${folderIndex}|${path.join(',')}`,
-              label
+              label,
+              depth: path.length,
+              folderIndex,
+              path: [...path]
             });
           }
 
@@ -1512,7 +1592,7 @@
           if (!Array.isArray(entries)) return;
           entries.forEach((entry, idx) => {
             if (entry && Array.isArray(entry.files)) {
-              walkFolder(folderIndex, [...path, idx], `${label} / ${entry.name}`);
+              walkFolder(folderIndex, [...path, idx], entry.name);
             }
           });
         }
@@ -1524,9 +1604,116 @@
         return options;
       }
 
+      function buildMovePickerTree(options) {
+        const tree = document.getElementById('movePickerTree');
+        tree.innerHTML = '';
+
+        if (!options.length) {
+          tree.innerHTML = '<div class="move-tree-empty">No valid destinations available.</div>';
+          return;
+        }
+
+        // Track which top-level folder sections are collapsed
+        const collapsed = new Set();
+
+        function folderIcon(opt) {
+          if (opt.depth === 0) {
+            const f = folders[opt.folderIndex];
+            if (f?.type === 'Photos') return '🖼️';
+            if (f?.type === 'Videos') return '🎥';
+            if (f?.type === 'Files') return '📄';
+            return '📁';
+          }
+          return '📂';
+        }
+
+        function render() {
+          tree.innerHTML = '';
+          options.forEach((opt) => {
+            const isTopLevel = opt.depth === 0;
+            const parentKey = opt.path.length > 0
+              ? `${opt.folderIndex}|${opt.path.slice(0, -1).join(',')}`
+              : null;
+
+            // Hide if any ancestor is collapsed
+            let hidden = false;
+            for (let d = 1; d <= opt.depth; d++) {
+              const ancestorKey = d === 1
+                ? `${opt.folderIndex}|`
+                : `${opt.folderIndex}|${opt.path.slice(0, d - 1).join(',')}`;
+              if (collapsed.has(ancestorKey)) { hidden = true; break; }
+            }
+            if (hidden) return;
+
+            // Check if this node has children in `options`
+            const myKey = opt.value;
+            const hasChildren = options.some((o) => {
+              if (o.folderIndex !== opt.folderIndex) return false;
+              if (o.path.length !== opt.path.length + 1) return false;
+              return o.path.slice(0, opt.path.length).every((v, i) => v === opt.path[i]);
+            });
+
+            const row = document.createElement('div');
+            row.className = 'move-tree-row';
+            row.dataset.value = opt.value;
+
+            // Indent spacer
+            if (opt.depth > 0) {
+              const indent = document.createElement('div');
+              indent.className = 'move-tree-indent';
+              indent.style.width = `${opt.depth * 20}px`;
+              row.appendChild(indent);
+            }
+
+            // Expand/collapse toggle
+            const toggle = document.createElement('div');
+            toggle.className = 'move-tree-toggle';
+            if (hasChildren) {
+              toggle.textContent = collapsed.has(myKey) ? '▶' : '▼';
+              toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (collapsed.has(myKey)) collapsed.delete(myKey);
+                else collapsed.add(myKey);
+                render();
+              });
+            }
+            row.appendChild(toggle);
+
+            // Folder icon
+            const icon = document.createElement('div');
+            icon.className = 'move-tree-icon';
+            icon.textContent = folderIcon(opt);
+            row.appendChild(icon);
+
+            // Label
+            const label = document.createElement('div');
+            label.className = 'move-tree-label';
+            label.textContent = opt.label;
+            if (isTopLevel) {
+              const sub = document.createElement('small');
+              sub.textContent = folders[opt.folderIndex]?.type || '';
+              label.appendChild(sub);
+            }
+            row.appendChild(label);
+
+            row.addEventListener('click', () => {
+              tree.querySelectorAll('.move-tree-row.selected').forEach((r) => r.classList.remove('selected'));
+              row.classList.add('selected');
+              moveDestinationSelect.value = opt.value;
+              clearFormError('moveFileModalError');
+            });
+
+            tree.appendChild(row);
+          });
+        }
+
+        render();
+      }
+
       function hideMoveFileModal() {
         moveFileModal.style.display = 'none';
         moveDestinationSelect.innerHTML = '';
+        document.getElementById('movePickerTree').innerHTML = '';
         clearFormError('moveFileModalError');
       }
 
@@ -1542,6 +1729,7 @@
           return;
         }
 
+        // Sync hidden <select> so confirmMoveFile can still read .value
         moveDestinationSelect.innerHTML = '';
         options.forEach((option) => {
           const optionEl = document.createElement('option');
@@ -1549,7 +1737,9 @@
           optionEl.textContent = option.label;
           moveDestinationSelect.appendChild(optionEl);
         });
+        moveDestinationSelect.value = '';
 
+        buildMovePickerTree(options);
         clearFormError('moveFileModalError');
         closeActionPanel();
         moveFileModal.style.display = 'block';
@@ -2458,7 +2648,13 @@
           return;
         }
 
-        const destination = parseDestinationValue(moveDestinationSelect.value);
+        const selectedRow = document.getElementById('movePickerTree').querySelector('.move-tree-row.selected');
+        if (!selectedRow) {
+          showFormError('moveFileModalError', 'Please select a destination folder.');
+          return;
+        }
+
+        const destination = parseDestinationValue(selectedRow.dataset.value);
         if (!destination) {
           showFormError('moveFileModalError', 'Please choose a valid destination folder.');
           return;
