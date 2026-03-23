@@ -1168,7 +1168,38 @@
       let selectedFileIndex = -1;
       let draggedFolderIndex = -1;
       let draggedFileIndex = -1;
+      let subfolderPath = []; // stack of file-array indices for nested subfolder navigation
       let toastTimeout;
+
+      // Returns the files array at the current navigation depth
+      function getCurrentFilesArray() {
+        if (currentFolderIndex === -1) return null;
+        let arr = folders[currentFolderIndex].files;
+        for (const idx of subfolderPath) {
+          if (!arr || !arr[idx] || !Array.isArray(arr[idx].files)) return null;
+          arr = arr[idx].files;
+        }
+        return arr;
+      }
+
+      // Rebuilds the breadcrumb to reflect the current subfolder depth
+      function updateBreadcrumb() {
+        if (currentFolderIndex === -1) return;
+        const topFolder = folders[currentFolderIndex];
+        let html = `<span class="breadcrumb-item" data-level="0">Home</span>`;
+        html += `<span class="breadcrumb-separator">></span>`;
+        const atTop = subfolderPath.length === 0;
+        html += `<span class="breadcrumb-item${atTop ? ' current' : ''}" data-level="1">${topFolder.name}</span>`;
+        let arr = topFolder.files;
+        subfolderPath.forEach((idx, i) => {
+          if (!arr || !arr[idx]) return;
+          const isCurrent = i === subfolderPath.length - 1;
+          html += `<span class="breadcrumb-separator">></span>`;
+          html += `<span class="breadcrumb-item${isCurrent ? ' current' : ''}" data-level="${i + 2}">${arr[idx].name}</span>`;
+          arr = arr[idx].files || [];
+        });
+        breadcrumb.innerHTML = html;
+      }
 
       function showToast(message, type = 'error') {
         if (!toast) return;
@@ -1466,9 +1497,9 @@
 
       function openFolder(index) {
         currentFolderIndex = index;
-        const folder = folders[index];
-        currentFolderSpan.textContent = `${folder.name} (${folder.type})`;
+        subfolderPath = [];
         renderFiles();
+        updateBreadcrumb();
         document.getElementById('folderContainer').style.display = 'none';
         document.querySelector('header').style.display = 'none';
         folderView.style.display = 'block';
@@ -1476,16 +1507,28 @@
 
       // Add breadcrumb click handlers
       breadcrumb.addEventListener('click', (e) => {
-        if (e.target.classList.contains('breadcrumb-item') && e.target.dataset.level === '0') {
-          backToFolders.click(); // Go back to main folders
+        if (!e.target.classList.contains('breadcrumb-item')) return;
+        const level = parseInt(e.target.dataset.level || '0', 10);
+        if (level === 0) {
+          // Go all the way home
+          subfolderPath = [];
+          backToFolders.click();
+        } else {
+          // level 1 = top-level folder (subfolderPath empty)
+          // level N = subfolderPath has N-1 entries
+          subfolderPath = subfolderPath.slice(0, level - 1);
+          renderFiles();
+          updateBreadcrumb();
         }
       });
 
       function renderFiles() {
         if (currentFolderIndex === -1) return;
         const folder = folders[currentFolderIndex];
+        const currentFiles = getCurrentFilesArray();
         filesList.innerHTML = '';
-        folder.files.forEach((file, index) => {
+        if (!currentFiles) return;
+        currentFiles.forEach((file, index) => {
           const fileDiv = document.createElement('div');
           fileDiv.className = 'file-item';
 
@@ -1500,11 +1543,12 @@
             fileDiv.innerHTML = `
               <div class="icon">${icon}</div>
               <div class="name">${file.name}</div>
-              <div class="type">Subfolder</div>
+              <div class="type">Subfolder (${file.files.length} item${file.files.length !== 1 ? 's' : ''})</div>
             `;
             fileDiv.addEventListener('click', () => {
-              // For now, just show an alert. In a full implementation, you'd navigate deeper
-              alert(`Subfolder: ${file.name}\nThis contains ${file.files.length} items`);
+              subfolderPath.push(index);
+              renderFiles();
+              updateBreadcrumb();
             });
             fileDiv.addEventListener('contextmenu', (e) => {
               if (!hasEditorAccess()) {
@@ -1612,11 +1656,7 @@
       }
 
       function moveFileWithinCurrentFolder(sourceIndex, targetIndex) {
-        if (currentFolderIndex === -1) {
-          return false;
-        }
-
-        const items = folders[currentFolderIndex]?.files;
+        const items = getCurrentFilesArray();
         if (!Array.isArray(items)) {
           return false;
         }
@@ -1726,13 +1766,14 @@
         }
 
         if (selectedFileIndex !== -1 && currentFolderIndex !== -1) {
-          const targetItem = folders[currentFolderIndex].files[selectedFileIndex];
+          const currentFiles = getCurrentFilesArray();
+          const targetItem = currentFiles ? currentFiles[selectedFileIndex] : null;
           const fileKeys = Array.isArray(targetItem?.files)
             ? collectFileKeys(targetItem.files)
             : collectFileKeys([targetItem]);
           const deletedFromR2 = await deleteFileKeysFromR2(fileKeys);
 
-          folders[currentFolderIndex].files.splice(selectedFileIndex, 1);
+          if (currentFiles) currentFiles.splice(selectedFileIndex, 1);
           saveDataToServer();
           renderFiles();
           if (!deletedFromR2 && fileKeys.length > 0) {
@@ -1746,10 +1787,17 @@
       });
 
       backToFolders.addEventListener('click', () => {
+        if (subfolderPath.length > 0) {
+          subfolderPath.pop();
+          renderFiles();
+          updateBreadcrumb();
+          return;
+        }
         folderView.style.display = 'none';
         document.getElementById('folderContainer').style.display = 'block';
         document.querySelector('header').style.display = 'block';
         currentFolderIndex = -1;
+        subfolderPath = [];
       });
 
       // Helper function to reset drop zone
@@ -1816,7 +1864,8 @@
             type: folders[currentFolderIndex].type, // Inherit parent folder type
             files: []
           };
-          folders[currentFolderIndex].files.push(subFolder);
+          const currentFiles = getCurrentFilesArray();
+          if (currentFiles) currentFiles.push(subFolder);
           saveDataToServer();
           renderFiles();
           addSubFolderModal.style.display = 'none';
@@ -1860,7 +1909,8 @@
         }
         
         if (name && content && currentFolderIndex !== -1) {
-          folders[currentFolderIndex].files.push({ name, content });
+          const currentFiles = getCurrentFilesArray();
+          if (currentFiles) currentFiles.push({ name, content });
           saveDataToServer();
           renderFiles();
           addFileModal.style.display = 'none';
