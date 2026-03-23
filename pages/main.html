@@ -1839,7 +1839,21 @@
             return;
           }
 
-          const moved = moveFileWithinCurrentFolder(draggedFileIndex, index);
+          const currentItems = getCurrentFilesArray();
+          const targetEntry = currentItems?.[index];
+          let moved = false;
+          let moveMessage = 'Item moved.';
+
+          if (targetEntry && Array.isArray(targetEntry.files)) {
+            const movedIntoFolderName = moveItemIntoSubfolder(draggedFileIndex, index);
+            moved = Boolean(movedIntoFolderName);
+            if (movedIntoFolderName) {
+              moveMessage = `Moved into ${movedIntoFolderName}.`;
+            }
+          } else {
+            moved = moveFileWithinCurrentFolder(draggedFileIndex, index);
+          }
+
           draggedFileIndex = -1;
 
           if (!moved) {
@@ -1849,7 +1863,7 @@
           renderFiles();
           const saved = await saveDataToServer();
           if (saved) {
-            showToast('Item moved.', 'success');
+            showToast(moveMessage, 'success');
           }
         });
       }
@@ -1867,6 +1881,66 @@
         const [movedItem] = items.splice(sourceIndex, 1);
         items.splice(targetIndex, 0, movedItem);
         return true;
+      }
+
+      function isFolderDescendant(parentFolder, potentialDescendant) {
+        if (!parentFolder || !Array.isArray(parentFolder.files)) {
+          return false;
+        }
+
+        for (const child of parentFolder.files) {
+          if (!child || !Array.isArray(child.files)) {
+            continue;
+          }
+
+          if (child === potentialDescendant) {
+            return true;
+          }
+
+          if (isFolderDescendant(child, potentialDescendant)) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      function moveItemIntoSubfolder(sourceIndex, targetFolderIndex) {
+        const items = getCurrentFilesArray();
+        if (!Array.isArray(items)) {
+          return null;
+        }
+
+        if (sourceIndex < 0 || targetFolderIndex < 0 || sourceIndex >= items.length || targetFolderIndex >= items.length) {
+          return null;
+        }
+
+        const sourceEntry = items[sourceIndex];
+        const initialTargetFolder = items[targetFolderIndex];
+
+        if (!initialTargetFolder || !Array.isArray(initialTargetFolder.files)) {
+          return null;
+        }
+
+        if (sourceEntry === initialTargetFolder) {
+          return null;
+        }
+
+        if (Array.isArray(sourceEntry.files) && isFolderDescendant(sourceEntry, initialTargetFolder)) {
+          return null;
+        }
+
+        const [movedEntry] = items.splice(sourceIndex, 1);
+        const normalizedTargetIndex = sourceIndex < targetFolderIndex ? targetFolderIndex - 1 : targetFolderIndex;
+        const targetFolder = items[normalizedTargetIndex];
+
+        if (!targetFolder || !Array.isArray(targetFolder.files)) {
+          items.splice(sourceIndex, 0, movedEntry);
+          return null;
+        }
+
+        targetFolder.files.push(movedEntry);
+        return targetFolder.name || 'folder';
       }
 
       // Hide context menus when clicking elsewhere
