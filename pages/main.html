@@ -1233,6 +1233,23 @@
           </div>
         </div>
 
+        <div id="renameModal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="renameModalTitle">Rename Item</h3>
+              <button id="closeRenameModal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <input type="text" id="renameInput" placeholder="Enter new name" autocomplete="off">
+              <p class="form-error" id="renameModalError"></p>
+            </div>
+            <div class="modal-footer">
+              <button id="cancelRename">Cancel</button>
+              <button id="confirmRename">Rename</button>
+            </div>
+          </div>
+        </div>
+
     <script>
       document.getElementById('accountBtn').addEventListener('click', () => {
         const menu = document.getElementById('accountMenu');
@@ -1455,6 +1472,13 @@
       const cancelMoveFileBtn = document.getElementById('cancelMoveFile');
       const confirmMoveFileBtn = document.getElementById('confirmMoveFile');
       const moveDestinationSelect = document.getElementById('moveDestinationSelect');
+      const renameModal = document.getElementById('renameModal');
+      const renameInput = document.getElementById('renameInput');
+      const renameModalTitle = document.getElementById('renameModalTitle');
+      const closeRenameModalBtn = document.getElementById('closeRenameModal');
+      const cancelRenameBtn = document.getElementById('cancelRename');
+      const confirmRenameBtn = document.getElementById('confirmRename');
+      const renameModalError = document.getElementById('renameModalError');
       const toast = document.getElementById('toast');
 
       // Drag and drop variables
@@ -1476,6 +1500,53 @@
       let draggedFileIndex = -1;
       let subfolderPath = []; // stack of file-array indices for nested subfolder navigation
       let toastTimeout;
+
+      // ── Rename Context ────────────────────────────────────────────
+      let renamingContext = null; // { type: 'folder'|'file', folderIndex, path, itemIndex, currentName }
+
+      function openRenameModal(type, name, context) {
+        renamingContext = { type, ...context };
+        renameModalTitle.textContent = type === 'folder' ? 'Rename Folder' : 'Rename Item';
+        renameInput.value = name;
+        renameModalError.textContent = '';
+        renameModalError.style.display = 'none';
+        renameModal.style.display = 'block';
+        renameInput.focus();
+        renameInput.select();
+      }
+
+      function closeRenameModal() {
+        renameModal.style.display = 'none';
+        renameInput.value = '';
+        renameModalError.textContent = '';
+        renameModalError.style.display = 'none';
+        renamingContext = null;
+      }
+
+      async function submitRename() {
+        if (!renamingContext) return;
+        const newName = renameInput.value.trim();
+        if (!newName) {
+          renameModalError.textContent = 'Name cannot be empty.';
+          renameModalError.style.display = 'block';
+          return;
+        }
+
+        if (renamingContext.type === 'folder') {
+          folders[renamingContext.folderIndex].name = newName;
+        } else {
+          const items = getFilesArrayByPath(renamingContext.folderIndex, renamingContext.path);
+          if (items && items[renamingContext.itemIndex]) {
+            items[renamingContext.itemIndex].name = newName;
+          }
+        }
+
+        await saveDataToServer();
+        closeRenameModal();
+        rerenderCurrentView();
+        showToast('Renamed successfully.', 'success');
+      }
+      // ─────────────────────────────────────────────────────────────
 
       // ── Action Panel ──────────────────────────────────────────────
       const actionPanel         = document.getElementById('actionPanel');
@@ -2098,6 +2169,12 @@
               subtitle: folder.type,
               buttons: [
                 {
+                  label: 'Edit Name',
+                  icon: '✏️',
+                  cls: 'apb-move',
+                  onClick: () => openRenameModal('folder', folder.name, { folderIndex: index })
+                },
+                {
                   label: 'Delete Folder',
                   icon: '🗑️',
                   cls: 'apb-delete',
@@ -2302,6 +2379,7 @@
                 title: file.name,
                 subtitle: `Subfolder · ${file.files.length} item${file.files.length !== 1 ? 's' : ''}`,
                 buttons: [
+                  { label: 'Edit Name', icon: '✏️', cls: 'apb-move', onClick: () => openRenameModal('file', file.name, { folderIndex: currentFolderIndex, path: [...subfolderPath], itemIndex: index }) },
                   { label: 'Move', icon: '📦', cls: 'apb-move', onClick: () => moveFileOptionBtn.click() },
                   { label: 'Delete', icon: '🗑️', cls: 'apb-delete', onClick: () => deleteFileBtn.click() }
                 ]
@@ -2343,6 +2421,7 @@
                 title: file.name,
                 subtitle: folder.type,
                 buttons: [
+                  { label: 'Edit Name', icon: '✏️', cls: 'apb-move', onClick: () => openRenameModal('file', file.name, { folderIndex: currentFolderIndex, path: [...subfolderPath], itemIndex: index }) },
                   { label: 'Move', icon: '📦', cls: 'apb-move', onClick: () => moveFileOptionBtn.click() },
                   { label: 'Delete', icon: '🗑️', cls: 'apb-delete', onClick: () => deleteFileBtn.click() }
                 ]
@@ -2673,6 +2752,35 @@
         const saved = await saveDataToServer();
         if (saved) {
           showToast(`Moved into ${movedInto}.`, 'success');
+        }
+      });
+
+      // Rename modal listeners
+      closeRenameModalBtn.addEventListener('click', () => {
+        closeRenameModal();
+      });
+
+      cancelRenameBtn.addEventListener('click', () => {
+        closeRenameModal();
+      });
+
+      confirmRenameBtn.addEventListener('click', () => {
+        if (!ensureEditorAccess()) {
+          closeRenameModal();
+          return;
+        }
+        submitRename();
+      });
+
+      renameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          confirmRenameBtn.click();
+        }
+      });
+
+      renameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeRenameModal();
         }
       });
 
