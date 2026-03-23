@@ -497,6 +497,34 @@
             background: rgba(102, 126, 234, 0.05);
         }
 
+        .upload-progress-wrap {
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .upload-progress-label {
+            font-size: 0.82rem;
+            color: #667eea;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .upload-progress-bar-track {
+            width: 100%;
+            height: 8px;
+            background: rgba(102, 126, 234, 0.15);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .upload-progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 99px;
+            transition: width 0.2s ease;
+        }
+
         .drag-text {
             color: #667eea;
             font-weight: 600;
@@ -1380,52 +1408,81 @@
       });
 
       // Upload file to server
-      async function uploadFileToServer(file) {
+      function uploadFileToServer(file) {
         if (!ensureEditorAccess()) {
           return;
         }
 
         const formData = new FormData();
         formData.append('file', file);
-        
-        try {
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            credentials: 'include',
-            body: formData
-          });
 
-          if (response.status === 401 || response.status === 403) {
+        // Show progress UI
+        const dropZoneContent = fileContentArea.querySelector('.drop-zone-content');
+        dropZoneContent.innerHTML = `
+          <div class="drop-icon">⏫</div>
+          <div class="drop-text">Uploading ${file.name}…</div>
+          <div class="upload-progress-wrap">
+            <div class="upload-progress-label" id="uploadProgressLabel">0%</div>
+            <div class="upload-progress-bar-track">
+              <div class="upload-progress-bar-fill" id="uploadProgressFill"></div>
+            </div>
+          </div>
+        `;
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+        xhr.withCredentials = true;
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (!e.lengthComputable) return;
+          const pct = Math.round((e.loaded / e.total) * 100);
+          const fill = document.getElementById('uploadProgressFill');
+          const label = document.getElementById('uploadProgressLabel');
+          if (fill) fill.style.width = pct + '%';
+          if (label) label.textContent = pct + '%';
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 401 || xhr.status === 403) {
             showReadOnlyMessage();
             fileInput.value = '';
+            resetDropZone();
             return;
           }
-          
-          if (response.ok) {
-            const fileInfo = await response.json();
-            fileContentInput.value = fileInfo.url; // Store server URL
-            
-            // Auto-fill name if empty
-            if (!fileNameInput.value.trim()) {
-              const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-              fileNameInput.value = nameWithoutExt;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const fileInfo = JSON.parse(xhr.responseText);
+              fileContentInput.value = fileInfo.url;
+              if (!fileNameInput.value.trim()) {
+                fileNameInput.value = file.name.replace(/\.[^/.]+$/, '');
+              }
+              dropZoneContent.innerHTML = `
+                <div class="drop-icon">✅</div>
+                <div class="drop-text">${file.name}</div>
+                <div class="drop-subtext">File uploaded — ready to save</div>
+              `;
+            } catch (e) {
+              console.error('Error parsing upload response:', e);
+              alert('Upload succeeded but response was unexpected. Please try again.');
+              resetDropZone();
+              fileInput.value = '';
             }
-            
-            // Update visual feedback
-            const dropZoneContent = fileContentArea.querySelector('.drop-zone-content');
-            dropZoneContent.innerHTML = `
-              <div class="drop-icon">✅</div>
-              <div class="drop-text">${file.name}</div>
-              <div class="drop-subtext">File uploaded - ready to save</div>
-            `;
           } else {
-            throw new Error('Upload failed');
+            console.error('Upload failed with status:', xhr.status);
+            alert('Failed to upload file. Please try again.');
+            resetDropZone();
+            fileInput.value = '';
           }
-        } catch (error) {
-          console.error('Error uploading file:', error);
-          alert('Failed to upload file. Please try again.');
+        });
+
+        xhr.addEventListener('error', () => {
+          console.error('Upload network error');
+          alert('Failed to upload file. Please check your connection and try again.');
+          resetDropZone();
           fileInput.value = '';
-        }
+        });
+
+        xhr.send(formData);
       }
 
       // Drag and drop event handlers
