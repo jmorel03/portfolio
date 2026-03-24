@@ -56,6 +56,7 @@ const HIGHLIGHTS_KEY = 'highlights:v1';
 const USER_ACTIVITY_KEY = 'user:activity:v1';
 const THREAD_POSTS_KEY = 'thread:posts:v1';
 const CHAT_MESSAGES_KEY = 'chat:messages:v1';
+const ALL_CHAT_ID = '__all__';
 const PASSWORD_HASH_ITERATIONS = 210000;
 
 const ROLE_LEVEL = {
@@ -365,6 +366,9 @@ function listChatTargets(users, currentUserId) {
 }
 
 function getChatThread(messages, userA, userB) {
+  if (String(userB || '') === ALL_CHAT_ID) {
+    return normalizeChatMessages(messages).filter((message) => String(message.targetUserId || '') === ALL_CHAT_ID);
+  }
   return normalizeChatMessages(messages).filter((message) => {
     const sender = String(message.senderUserId || '');
     const target = String(message.targetUserId || '');
@@ -893,12 +897,14 @@ export default {
         });
       }
 
-      const users = await getAccessUsers(env);
-      if (!users.some((user) => String(user.id) === targetUserId)) {
-        return new Response(JSON.stringify({ ok: false, error: 'Target user not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
-        });
+      if (targetUserId !== ALL_CHAT_ID) {
+        const users = await getAccessUsers(env);
+        if (!users.some((user) => String(user.id) === targetUserId)) {
+          return new Response(JSON.stringify({ ok: false, error: 'Target user not found' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
       }
 
       const messages = await getChatMessages(env);
@@ -927,27 +933,33 @@ export default {
           });
         }
 
-        if (targetUserId === String(session?.uid || '')) {
-          return new Response(JSON.stringify({ ok: false, error: 'Cannot message yourself' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        const users = await getAccessUsers(env);
-        const targetUser = users.find((user) => String(user.id) === targetUserId);
-        if (!targetUser) {
-          return new Response(JSON.stringify({ ok: false, error: 'Target user not found' }), {
-            status: 404,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
         if (!text) {
           return new Response(JSON.stringify({ ok: false, error: 'Message text is required' }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' }
           });
+        }
+
+        let activityTarget = 'All chat';
+
+        if (targetUserId !== ALL_CHAT_ID) {
+          if (targetUserId === String(session?.uid || '')) {
+            return new Response(JSON.stringify({ ok: false, error: 'Cannot message yourself' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+
+          const users = await getAccessUsers(env);
+          const targetUser = users.find((user) => String(user.id) === targetUserId);
+          if (!targetUser) {
+            return new Response(JSON.stringify({ ok: false, error: 'Target user not found' }), {
+              status: 404,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+
+          activityTarget = `Chat with ${String(targetUser.name || 'User').slice(0, 80)}`;
         }
 
         const messages = await getChatMessages(env);
@@ -965,8 +977,8 @@ export default {
         const thread = getChatThread(saved, String(session.uid || ''), targetUserId);
         await appendUserActivity(env, request, session, {
           action: 'chat',
-          target: `Chat with ${String(targetUser.name || 'User').slice(0, 80)}`,
-          details: 'Sent a direct message'
+          target: activityTarget,
+          details: targetUserId === ALL_CHAT_ID ? 'Sent a message to all chat' : 'Sent a direct message'
         });
 
         return new Response(JSON.stringify({ ok: true, messages: thread }), {

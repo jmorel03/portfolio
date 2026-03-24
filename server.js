@@ -21,6 +21,7 @@ const HIGHLIGHTS_FILE = path.join(__dirname, 'data', 'highlights.json');
 const USER_ACTIVITY_FILE = path.join(__dirname, 'data', 'user-activity.json');
 const THREAD_POSTS_FILE = path.join(__dirname, 'data', 'thread-posts.json');
 const CHAT_MESSAGES_FILE = path.join(__dirname, 'data', 'chat-messages.json');
+const ALL_CHAT_ID = '__all__';
 
 function timingSafeEqualHex(a, b) {
   const aBuffer = Buffer.from(String(a), 'utf8');
@@ -413,6 +414,10 @@ function listChatTargets(currentUserId) {
 }
 
 function getChatThread(messages, userA, userB) {
+  if (String(userB || '') === ALL_CHAT_ID) {
+    return normalizeChatMessages(messages).filter((message) => String(message.targetUserId || '') === ALL_CHAT_ID);
+  }
+
   return normalizeChatMessages(messages).filter((message) => {
     const sender = String(message.senderUserId || '');
     const target = String(message.targetUserId || '');
@@ -825,9 +830,11 @@ app.get('/api/chat-messages', requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Target user is required' });
     }
 
-    const targetUserExists = ACCESS_USERS.some((user) => String(user.id) === targetUserId);
-    if (!targetUserExists) {
-      return res.status(404).json({ ok: false, error: 'Target user not found' });
+    if (targetUserId !== ALL_CHAT_ID) {
+      const targetUserExists = ACCESS_USERS.some((user) => String(user.id) === targetUserId);
+      if (!targetUserExists) {
+        return res.status(404).json({ ok: false, error: 'Target user not found' });
+      }
     }
 
     const messages = await readChatMessages();
@@ -848,17 +855,23 @@ app.post('/api/chat-messages', requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Target user is required' });
     }
 
-    if (targetUserId === String(req.session?.userId || '')) {
-      return res.status(400).json({ ok: false, error: 'Cannot message yourself' });
-    }
-
-    const targetUser = ACCESS_USERS.find((user) => String(user.id) === targetUserId);
-    if (!targetUser) {
-      return res.status(404).json({ ok: false, error: 'Target user not found' });
-    }
-
     if (!text) {
       return res.status(400).json({ ok: false, error: 'Message text is required' });
+    }
+
+    let activityTarget = 'All chat';
+
+    if (targetUserId !== ALL_CHAT_ID) {
+      if (targetUserId === String(req.session?.userId || '')) {
+        return res.status(400).json({ ok: false, error: 'Cannot message yourself' });
+      }
+
+      const targetUser = ACCESS_USERS.find((user) => String(user.id) === targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ ok: false, error: 'Target user not found' });
+      }
+
+      activityTarget = `Chat with ${String(targetUser.name || 'User').slice(0, 80)}`;
     }
 
     const messages = await readChatMessages();
@@ -878,8 +891,8 @@ app.post('/api/chat-messages', requireAuth, async (req, res) => {
 
     await appendUserActivity(req, {
       action: 'chat',
-      target: `Chat with ${String(targetUser.name || 'User').slice(0, 80)}`,
-      details: 'Sent a direct message'
+      target: activityTarget,
+      details: targetUserId === ALL_CHAT_ID ? 'Sent a message to all chat' : 'Sent a direct message'
     });
 
     return res.json({ ok: true, messages: thread });
@@ -1002,36 +1015,51 @@ app.get('/api/files/:filename', async (req, res) => {
     const allowedUserIds = normalizeAllowedUserIds(meta.allowedUserIds);
 
     if (allowedUserIds.length > 0) {
-      if (!req.session?.authenticated) {
-        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+      if (!req.session?.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const currentUserId = String(req.session?.userId || '');
-      if (!allowedUserIds.includes(currentUserId)) {
-        return res.status(403).json({ ok: false, error: 'Forbidden' });
+      if (!allowedUserIds.includes(String(req.session.userId))) {
+        return res.status(403).json({ error: 'Forbidden' });
       }
     }
 
     if (requiredRole) {
-      if (!req.session?.authenticated) {
-        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+      if (!req.session?.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       if (!hasRole(req.session?.role, requiredRole)) {
-        return res.status(403).json({ ok: false, error: 'Forbidden' });
+        return res.status(403).json({ error: 'Forbidden' });
       }
     }
 
-    res.sendFile(filePath);
+    await fs.access(filePath);
+    const contentType = String(meta.contentType || '').trim();
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
+
+    const downloadName = String(meta.originalName || '').trim();
+    if (downloadName) {
+      res.setHeader('Content-Disposition', `inline; filename="${downloadName.replace(/\"/g, '')}"`);
+    }
+
+    res.setHeader('Cache-Control', requiredRole ? 'private, max-age=3600' : 'public, max-age=3600');
+    return res.sendFile(filePath);
   } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
     console.error('Error serving file:', error);
-    res.status(404).json({ error: 'File not found' });
+    return res.status(500).json({ error: 'Failed to retrieve file' });
   }
 });
 
 app.get('/api/file-permissions/:fileId', requireRole('admin'), async (req, res) => {
   try {
-    const fileId = decodeURIComponent(String(req.params.fileId || '').trim());
+    const fileId = String(req.params?.fileId || '').trim();
     if (!fileId) {
       return res.status(400).json({ ok: false, error: 'File ID is required' });
     }
@@ -1057,7 +1085,7 @@ app.get('/api/file-permissions/:fileId', requireRole('admin'), async (req, res) 
 
 app.put('/api/file-permissions/:fileId', requireRole('admin'), async (req, res) => {
   try {
-    const fileId = decodeURIComponent(String(req.params.fileId || '').trim());
+    const fileId = String(req.params?.fileId || '').trim();
     if (!fileId) {
       return res.status(400).json({ ok: false, error: 'File ID is required' });
     }

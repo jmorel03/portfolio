@@ -1,5 +1,6 @@
 (function () {
   const POLL_MS = 5000;
+  const ALL_CHAT_ID = '__all__';
 
   function escapeHtml(value) {
     return String(value || '')
@@ -155,21 +156,23 @@
 
     function renderTargetUsers(users) {
       const entries = Array.isArray(users) ? users : [];
-      if (!entries.length) {
-        targetSelect.innerHTML = '<option value="">No users available</option>';
-        activeTargetUserId = '';
-        return;
-      }
-
-      targetSelect.innerHTML = entries.map((user) => {
+      const userOptions = entries.map((user) => {
         const id = escapeHtml(user.id || '');
         const name = escapeHtml(user.name || 'User');
         const role = escapeHtml(user.role || 'viewer');
         return `<option value="${id}">${name} (${role})</option>`;
       }).join('');
 
-      if (!entries.some((user) => String(user.id) === String(activeTargetUserId))) {
-        activeTargetUserId = String(entries[0].id || '');
+      targetSelect.innerHTML = `
+        <option value="${ALL_CHAT_ID}">All chat (everyone)</option>
+        ${userOptions}
+      `;
+
+      if (
+        activeTargetUserId !== ALL_CHAT_ID
+        && !entries.some((user) => String(user.id) === String(activeTargetUserId))
+      ) {
+        activeTargetUserId = ALL_CHAT_ID;
       }
 
       targetSelect.value = activeTargetUserId;
