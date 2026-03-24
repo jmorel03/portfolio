@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const form = document.getElementById('login-form');
   const code = document.getElementById('code');
   const message = document.getElementById('message');
+  const visitorAccessBtn = document.getElementById('visitorAccessBtn');
 
   function showMessage(text, isError=true){
     message.textContent = text;
@@ -47,4 +48,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
       btn.textContent = 'Unlock';
     }
   });
+
+  if (visitorAccessBtn) {
+    visitorAccessBtn.addEventListener('click', () => {
+      window.location.href = '/pages/highlights.html';
+    });
+  }
 });

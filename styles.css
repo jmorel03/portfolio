@@ -19,6 +19,8 @@ input[type="email"],input[type="password"]{padding:12px 14px;border:1px solid #e
 .forgot{font-size:0.9rem;color:var(--accent);text-decoration:none}
 .message{min-height:20px;font-size:0.9rem;color:var(--danger);margin-top:6px}
 .btn{margin-top:8px;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+.btn-secondary{background:#e2e8f0;color:#334155}
+.btn-secondary:hover{background:#cbd5e1}
 .signup{margin-top:14px;text-align:center;color:var(--muted);font-size:0.9rem}
 .signup a{color:var(--accent);text-decoration:none}
 .timestamp{position:fixed;bottom:12px;right:12px;font-size:0.75rem;color:var(--muted);opacity:0.7;background:rgba(255,255,255,0.8);padding:8px 12px;border-radius:6px;backdrop-filter:blur(5px);font-family:monospace}

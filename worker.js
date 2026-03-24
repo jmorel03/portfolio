@@ -52,6 +52,10 @@ const AUTH_CODE_KEY = 'auth:code:v1';
 const ACCESS_USERS_KEY = 'access:users:v1';
 const DELETE_PASSWORD_HASH_KEY = 'delete:password:hash:v1';
 const LOGIN_ACTIVITY_KEY = 'login:activity:v1';
+const HIGHLIGHTS_KEY = 'highlights:v1';
+const USER_ACTIVITY_KEY = 'user:activity:v1';
+const THREAD_POSTS_KEY = 'thread:posts:v1';
+const CHAT_MESSAGES_KEY = 'chat:messages:v1';
 const PASSWORD_HASH_ITERATIONS = 210000;
 
 const ROLE_LEVEL = {
@@ -67,6 +71,15 @@ function normalizeRole(role) {
 
 function hasRole(actualRole, requiredRole) {
   return (ROLE_LEVEL[normalizeRole(actualRole)] || 0) >= (ROLE_LEVEL[normalizeRole(requiredRole)] || Number.MAX_SAFE_INTEGER);
+}
+
+function normalizeRequiredRole(requiredRole) {
+  const value = String(requiredRole || '').trim().toLowerCase();
+  if (!value || value === 'public' || value === 'all' || value === 'none') {
+    return null;
+  }
+
+  return ROLE_LEVEL[value] ? value : null;
 }
 
 function normalizeAccessUsers(users, fallbackCode) {
@@ -108,6 +121,222 @@ function sanitizeAccessUsersForAdmin(users) {
 
 function generateUserId() {
   return `user-${crypto.randomUUID()}`;
+}
+
+function normalizeHighlights(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .slice(0, 24)
+    .map((item) => {
+      const title = String(item?.title || '').trim().slice(0, 120);
+      const description = String(item?.description || '').trim().slice(0, 300);
+      const url = String(item?.url || '').trim().slice(0, 500);
+
+      if (!title || !url) {
+        return null;
+      }
+
+      return { title, description, url };
+    })
+    .filter(Boolean);
+}
+
+async function getHighlights(env) {
+  if (!env.PORTFOLIO_KV) {
+    return [];
+  }
+
+  const raw = await env.PORTFOLIO_KV.get(HIGHLIGHTS_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeHighlights(parsed?.items || parsed);
+  } catch {
+    return [];
+  }
+}
+
+async function setHighlights(env, items) {
+  if (!env.PORTFOLIO_KV) {
+    throw new Error('KV binding missing');
+  }
+
+  const normalized = normalizeHighlights(items);
+  await env.PORTFOLIO_KV.put(HIGHLIGHTS_KEY, JSON.stringify({ items: normalized }));
+  return normalized;
+}
+
+function normalizeActivityAction(action) {
+  const value = String(action || '').trim().toLowerCase();
+  if (!value) {
+    return null;
+  }
+
+  return value.slice(0, 40);
+}
+
+async function getUserActivity(env) {
+  if (!env.PORTFOLIO_KV) {
+    return [];
+  }
+
+  const raw = await env.PORTFOLIO_KV.get(USER_ACTIVITY_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function appendUserActivity(env, request, session, payload = {}) {
+  if (!env.PORTFOLIO_KV) {
+    return;
+  }
+
+  const action = normalizeActivityAction(payload.action);
+  if (!action) {
+    return;
+  }
+
+  const target = String(payload.target || '').trim().slice(0, 200);
+  const details = String(payload.details || '').trim().slice(0, 400);
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const entry = {
+    timestamp: new Date().toISOString(),
+    action,
+    target,
+    details,
+    userId: session?.uid || 'unknown',
+    userName: session?.name || 'Unknown user',
+    role: normalizeRole(session?.role),
+    ip
+  };
+
+  const activity = await getUserActivity(env);
+  activity.unshift(entry);
+  await env.PORTFOLIO_KV.put(USER_ACTIVITY_KEY, JSON.stringify(activity.slice(0, 200)));
+}
+
+function normalizeThreadPosts(posts) {
+  if (!Array.isArray(posts)) {
+    return [];
+  }
+
+  return posts
+    .slice(0, 200)
+    .map((post) => {
+      const id = String(post?.id || '').trim();
+      const author = String(post?.author || '').trim().slice(0, 80);
+      const role = normalizeRole(post?.role);
+      const title = String(post?.title || '').trim().slice(0, 160);
+      const content = String(post?.content || '').trim().slice(0, 4000);
+      const createdAt = String(post?.createdAt || '').trim();
+
+      if (!id || !author || !content || !createdAt) {
+        return null;
+      }
+
+      return { id, author, role, title, content, createdAt };
+    })
+    .filter(Boolean);
+}
+
+async function getThreadPosts(env) {
+  if (!env.PORTFOLIO_KV) {
+    return [];
+  }
+
+  const raw = await env.PORTFOLIO_KV.get(THREAD_POSTS_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeThreadPosts(parsed?.posts || parsed);
+  } catch {
+    return [];
+  }
+}
+
+async function setThreadPosts(env, posts) {
+  if (!env.PORTFOLIO_KV) {
+    throw new Error('KV binding missing');
+  }
+
+  const normalized = normalizeThreadPosts(posts);
+  await env.PORTFOLIO_KV.put(THREAD_POSTS_KEY, JSON.stringify({ posts: normalized }));
+  return normalized;
+}
+
+function normalizeChatMessages(messages) {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+
+  return messages
+    .slice(-300)
+    .map((message) => {
+      const id = String(message?.id || '').trim();
+      const userId = String(message?.userId || '').trim().slice(0, 120);
+      const userName = String(message?.userName || '').trim().slice(0, 80);
+      const role = normalizeRole(message?.role);
+      const text = String(message?.text || '').trim().slice(0, 800);
+      const createdAt = String(message?.createdAt || '').trim();
+
+      if (!id || !userName || !text || !createdAt) {
+        return null;
+      }
+
+      return {
+        id,
+        userId: userId || 'unknown',
+        userName,
+        role,
+        text,
+        createdAt
+      };
+    })
+    .filter(Boolean);
+}
+
+async function getChatMessages(env) {
+  if (!env.PORTFOLIO_KV) {
+    return [];
+  }
+
+  const raw = await env.PORTFOLIO_KV.get(CHAT_MESSAGES_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeChatMessages(parsed?.messages || parsed);
+  } catch {
+    return [];
+  }
+}
+
+async function setChatMessages(env, messages) {
+  if (!env.PORTFOLIO_KV) {
+    throw new Error('KV binding missing');
+  }
+
+  const normalized = normalizeChatMessages(messages);
+  await env.PORTFOLIO_KV.put(CHAT_MESSAGES_KEY, JSON.stringify({ messages: normalized }));
+  return normalized;
 }
 
 async function hashText(value) {
@@ -467,6 +696,200 @@ export default {
       const headers = new Headers({ 'Content-Type': 'application/json' });
       headers.append('Set-Cookie', 'session=deleted; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+    }
+
+    if (path === '/api/highlights' && request.method === 'GET') {
+      const items = await getHighlights(env);
+      return new Response(JSON.stringify({ ok: true, items }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/highlights' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      try {
+        const body = await request.json().catch(() => ({}));
+        const items = await setHighlights(env, body?.items || []);
+        return new Response(JSON.stringify({ ok: true, items }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ ok: false, error: 'Failed to save highlights' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    if (path === '/api/user-activity' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      const activity = await getUserActivity(env);
+      return new Response(JSON.stringify({ ok: true, activity }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/user-activity' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      try {
+        const body = await request.json().catch(() => ({}));
+        await appendUserActivity(env, request, session, body || {});
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ ok: false, error: 'Failed to record activity' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    if (path === '/api/thread-posts' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      const posts = await getThreadPosts(env);
+      return new Response(JSON.stringify({ ok: true, posts }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/thread-posts' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'editor')) {
+        return forbiddenResponse();
+      }
+
+      try {
+        const body = await request.json().catch(() => ({}));
+        const title = String(body?.title || '').trim().slice(0, 160);
+        const content = String(body?.content || '').trim().slice(0, 4000);
+
+        if (!content) {
+          return new Response(JSON.stringify({ ok: false, error: 'Post content is required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const posts = await getThreadPosts(env);
+        posts.unshift({
+          id: `post-${crypto.randomUUID()}`,
+          author: String(session?.name || 'Unknown user').slice(0, 80),
+          role: normalizeRole(session?.role),
+          title,
+          content,
+          createdAt: new Date().toISOString()
+        });
+
+        const saved = await setThreadPosts(env, posts);
+        await appendUserActivity(env, request, session, {
+          action: 'post',
+          target: title || 'Thread post',
+          details: 'Created a thread/blog post'
+        });
+
+        return new Response(JSON.stringify({ ok: true, posts: saved }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ ok: false, error: 'Failed to create thread post' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    if (path === '/api/chat-messages' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      const messages = await getChatMessages(env);
+      return new Response(JSON.stringify({ ok: true, messages }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/chat-messages' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      try {
+        const body = await request.json().catch(() => ({}));
+        const text = String(body?.text || '').trim().slice(0, 800);
+
+        if (!text) {
+          return new Response(JSON.stringify({ ok: false, error: 'Message text is required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const messages = await getChatMessages(env);
+        messages.push({
+          id: `chat-${crypto.randomUUID()}`,
+          userId: String(session?.uid || 'unknown'),
+          userName: String(session?.name || 'Unknown user').slice(0, 80),
+          role: normalizeRole(session?.role),
+          text,
+          createdAt: new Date().toISOString()
+        });
+
+        const saved = await setChatMessages(env, messages);
+        await appendUserActivity(env, request, session, {
+          action: 'chat',
+          target: 'Chat',
+          details: 'Sent a chat message'
+        });
+
+        return new Response(JSON.stringify({ ok: true, messages: saved }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {
+        return new Response(JSON.stringify({ ok: false, error: 'Failed to send chat message' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     if (path === '/api/me' && request.method === 'GET') {
@@ -900,6 +1323,7 @@ export default {
 
         const formData = await request.formData();
         const file = formData.get('file');
+        const requiredRole = normalizeRequiredRole(formData.get('requiredRole'));
 
         if (!file || typeof file === 'string') {
           return new Response(JSON.stringify({ error: 'No file provided' }), {
@@ -915,13 +1339,21 @@ export default {
 
         await saveFile(env, fileKey, buffer, {
           contentType: mimeType,
-          fileName: file.name || 'upload'
+          fileName: file.name || 'upload',
+          requiredRole
+        });
+
+        await appendUserActivity(env, request, session, {
+          action: 'upload',
+          target: file.name || 'upload',
+          details: `Uploaded file (${buffer.byteLength} bytes)`
         });
 
         return new Response(JSON.stringify({
           ok: true,
           url: `/api/files/${encodeURIComponent(fileKey)}`,
-          name: file.name || 'upload'
+          name: file.name || 'upload',
+          requiredRole
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -935,11 +1367,6 @@ export default {
     }
 
     if (path.startsWith('/api/files/') && request.method === 'GET') {
-      const session = await getSessionFromRequest(request, env);
-      if (!session) {
-        return unauthorizedResponse();
-      }
-      
       if (!env.PORTFOLIO_KV && !env.PORTFOLIO_R2) {
         return new Response('Storage not configured', { status: 500 });
       }
@@ -953,9 +1380,21 @@ export default {
       }
 
       const meta = await getFileMeta(env, fileKey);
+      const requiredRole = normalizeRequiredRole(meta.requiredRole);
+      if (requiredRole) {
+        const session = await getSessionFromRequest(request, env);
+        if (!session) {
+          return unauthorizedResponse();
+        }
+
+        if (!hasRole(session.role, requiredRole)) {
+          return forbiddenResponse();
+        }
+      }
+
       const headers = new Headers({
         'Content-Type': meta.contentType || 'application/octet-stream',
-        'Cache-Control': 'private, max-age=3600'
+        'Cache-Control': requiredRole ? 'private, max-age=3600' : 'public, max-age=3600'
       });
 
       if (meta.fileName) {
@@ -980,6 +1419,11 @@ export default {
 
       try {
         const deletedFromR2 = await deleteFileFromR2(env, fileKey);
+        await appendUserActivity(env, request, session, {
+          action: 'delete',
+          target: fileKey,
+          details: deletedFromR2 ? 'Deleted file from R2' : 'Requested delete'
+        });
         return new Response(JSON.stringify({ ok: true, deletedFromR2 }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -1026,6 +1470,12 @@ export default {
           await env.PORTFOLIO_R2.delete(`${key}:meta`);
         }));
 
+        await appendUserActivity(env, request, session, {
+          action: 'delete',
+          target: `${uniqueKeys.length} file(s)`,
+          details: 'Batch deleted files from R2'
+        });
+
         return new Response(JSON.stringify({ ok: true, deleted: uniqueKeys.length, deletedFromR2: true }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -1071,6 +1521,52 @@ export default {
         });
     }
 
+    if (path === '/pages/admin.html') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session || !hasRole(session.role, 'admin')) {
+        return Response.redirect(`${new URL(request.url).origin}/pages/main.html`, 302);
+      }
+
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/admin.html')
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (html) {
+            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          } else {
+            return new Response('admin.html not found', { status: 404 });
+          }
+        });
+    }
+
+    if (path === '/pages/highlights.html') {
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/highlights.html')
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (html) {
+            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          } else {
+            return new Response('highlights.html not found', { status: 404 });
+          }
+        });
+    }
+
+    if (path === '/pages/thread.html') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return Response.redirect(`${new URL(request.url).origin}/`, 302);
+      }
+
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/thread.html')
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (html) {
+            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          } else {
+            return new Response('thread.html not found', { status: 404 });
+          }
+        });
+    }
+
     if (path === '/' || path === '/index.html') {
       // Serve the latest index.html from your repo
       return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/index.html')
@@ -1104,6 +1600,30 @@ export default {
             return new Response(js, { status: 200, headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
           } else {
             return new Response('script.js not found', { status: 404 });
+          }
+        });
+    }
+
+    if (path === '/chat-widget.css') {
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/chat-widget.css')
+        .then(r => r.ok ? r.text() : null)
+        .then(css => {
+          if (css) {
+            return new Response(css, { status: 200, headers: { 'Content-Type': 'text/css; charset=utf-8' } });
+          } else {
+            return new Response('chat-widget.css not found', { status: 404 });
+          }
+        });
+    }
+
+    if (path === '/chat-widget.js') {
+      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/chat-widget.js')
+        .then(r => r.ok ? r.text() : null)
+        .then(js => {
+          if (js) {
+            return new Response(js, { status: 200, headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
+          } else {
+            return new Response('chat-widget.js not found', { status: 404 });
           }
         });
     }

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio</title>
+  <link rel="stylesheet" href="/chat-widget.css">
     <style>
         * {
             box-sizing: border-box;
@@ -270,6 +271,13 @@
             margin-bottom: 30px;
             padding-bottom: 20px;
             border-bottom: 2px solid #e2e8f0;
+          border-radius: 14px;
+          transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        #folderViewHeader.header-drop-target {
+          background: rgba(99, 102, 241, 0.12);
+          box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35) inset;
         }
 
         #breadcrumb {
@@ -1094,15 +1102,17 @@
       </div>
 
     <header style="position: fixed; top: 10px; right: 10px;">
-        <button id="accountBtn" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer;">Account</button>
+        <button id="accountBtn" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer;">Settings</button>
         <div id="accountMenu" class="account-menu">
-            <button id="settingsBtn">Account Settings</button>
+          <button id="settingsBtn">Settings</button>
+          <button id="threadBtn">Thread / Blog</button>
+          <button id="adminPanelBtn" style="display:none;">Admin Panel</button>
             <button id="logoutBtn">Logout</button>
         </div>
     </header>
 
     <div id="folderContainer">
-        <h1>Welcome to Your Portfolio</h1>
+      <h1 id="welcomeTitle">Welcome to Jonathan's Portfolio</h1>
         <button id="addFolderBtn">Create New Folder</button>
         <div id="folders"></div>
     </div>
@@ -1269,6 +1279,14 @@
         window.location.href = '/pages/settings.html';
       });
 
+      document.getElementById('threadBtn').addEventListener('click', () => {
+        window.location.href = '/pages/thread.html';
+      });
+
+      document.getElementById('adminPanelBtn').addEventListener('click', () => {
+        window.location.href = '/pages/admin.html';
+      });
+
       function formatRoleLabel(role) {
         const normalized = String(role || '').toLowerCase();
         if (!normalized) {
@@ -1295,6 +1313,7 @@
         const badge = document.getElementById('userIdentityBadge');
         const nameElement = document.getElementById('userIdentityName');
         const roleElement = document.getElementById('userIdentityRole');
+        const welcomeTitle = document.getElementById('welcomeTitle');
 
         try {
           const response = await fetch('/api/me', {
@@ -1309,6 +1328,14 @@
           const result = await response.json();
           const user = result?.user;
           currentUserRole = String(user?.role || 'viewer').toLowerCase();
+          const adminPanelBtn = document.getElementById('adminPanelBtn');
+          adminPanelBtn.style.display = currentUserRole === 'admin' ? 'block' : 'none';
+          const normalizedUserName = String(user?.name || '').trim().toLowerCase();
+          if (welcomeTitle) {
+            welcomeTitle.textContent = normalizedUserName === 'jonathan'
+              ? 'Welcome to your Portfolio'
+              : "Welcome to Jonathan's Portfolio";
+          }
           nameElement.textContent = user?.name || 'Unknown user';
           roleElement.textContent = formatRoleLabel(user?.role);
           roleElement.className = `user-identity-role ${getRoleClass(user?.role)}`;
@@ -1317,6 +1344,7 @@
         } catch (error) {
           console.error('Error loading current user identity:', error);
           currentUserRole = 'viewer';
+          document.getElementById('adminPanelBtn').style.display = 'none';
           updateEditingPermissions();
           badge.style.display = 'none';
         }
@@ -1436,6 +1464,21 @@
         }
       }
 
+      async function logUserActivity(action, target = '', details = '') {
+        try {
+          await fetch('/api/user-activity', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ action, target, details })
+          });
+        } catch (error) {
+          console.error('Failed to log user activity:', error);
+        }
+      }
+
       const foldersDiv = document.getElementById('folders');
       const addFolderBtn = document.getElementById('addFolderBtn');
       const addFolderForm = document.getElementById('addFolderForm');
@@ -1449,6 +1492,7 @@
       const moveFileOptionBtn = document.getElementById('moveFileOption');
       const deleteFileBtn = document.getElementById('deleteFile');
       const folderView = document.getElementById('folderView');
+      const folderViewHeader = document.getElementById('folderViewHeader');
       const backToFolders = document.getElementById('backToFolders');
       const breadcrumb = document.getElementById('breadcrumb');
       const currentFolderSpan = document.getElementById('currentFolder');
@@ -2067,6 +2111,7 @@
             try {
               const fileInfo = JSON.parse(xhr.responseText);
               fileContentInput.value = fileInfo.url;
+              logUserActivity('upload', file.name, 'Uploaded file for portfolio item');
               if (!fileNameInput.value.trim()) {
                 fileNameInput.value = file.name.replace(/\.[^/.]+$/, '');
               }
@@ -2234,6 +2279,8 @@
             return;
           }
 
+          const movedFolderName = folders[draggedFolderIndex]?.name || 'Folder';
+          const destinationFolderName = folders[index]?.name || 'Folder';
           const moved = moveFolder(draggedFolderIndex, index);
           draggedFolderIndex = -1;
 
@@ -2245,6 +2292,7 @@
           const saved = await saveDataToServer();
           if (saved) {
             showToast('Folder moved.', 'success');
+            logUserActivity('move', movedFolderName, `Moved folder to ${destinationFolderName}`);
           }
         });
       }
@@ -2299,6 +2347,54 @@
         item.classList.add('breadcrumb-drop-target');
       });
 
+      // Easier FolderViewHeader drop target: drop anywhere on header to move item up one level
+      folderViewHeader.addEventListener('dragover', (e) => {
+        if (draggedFileIndex === -1) return;
+        if (subfolderPath.length === 0) return;
+        if (e.target.closest('.breadcrumb-item')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        folderViewHeader.classList.add('header-drop-target');
+      });
+
+      folderViewHeader.addEventListener('dragleave', (e) => {
+        if (!folderViewHeader.contains(e.relatedTarget)) {
+          folderViewHeader.classList.remove('header-drop-target');
+        }
+      });
+
+      folderViewHeader.addEventListener('drop', async (e) => {
+        if (draggedFileIndex === -1) return;
+        if (subfolderPath.length === 0) return;
+        if (e.target.closest('.breadcrumb-item')) return;
+
+        e.preventDefault();
+        folderViewHeader.classList.remove('header-drop-target');
+
+        const sourceContext = {
+          folderIndex: currentFolderIndex,
+          path: [...subfolderPath],
+          itemIndex: draggedFileIndex
+        };
+
+        const parentPath = subfolderPath.slice(0, -1);
+        const movedToName = moveItemToDestination(sourceContext, currentFolderIndex, parentPath);
+        draggedFileIndex = -1;
+
+        if (!movedToName) {
+          showToast('Could not move item.');
+          return;
+        }
+
+        renderFiles();
+        updateBreadcrumb();
+        const saved = await saveDataToServer();
+        if (saved) {
+          showToast(`Moved up to ${movedToName}.`, 'success');
+          logUserActivity('move', 'Item', `Moved item up to ${movedToName}`);
+        }
+      });
+
       breadcrumb.addEventListener('dragleave', (e) => {
         if (!breadcrumb.contains(e.relatedTarget)) {
           breadcrumb.querySelectorAll('.breadcrumb-item').forEach((el) => el.classList.remove('breadcrumb-drop-target'));
@@ -2309,6 +2405,7 @@
       });
 
       breadcrumb.addEventListener('drop', async (e) => {
+        folderViewHeader.classList.remove('header-drop-target');
         breadcrumb.querySelectorAll('.breadcrumb-item').forEach((el) => el.classList.remove('breadcrumb-drop-target'));
         if (draggedFileIndex === -1) return;
         const item = e.target.closest('.breadcrumb-item');
@@ -2332,6 +2429,7 @@
         const saved = await saveDataToServer();
         if (saved) {
           showToast(`Moved to ${movedToName}.`, 'success');
+          logUserActivity('move', 'Item', `Moved item to ${movedToName}`);
         }
       });
 
@@ -2505,6 +2603,7 @@
           const saved = await saveDataToServer();
           if (saved) {
             showToast(moveMessage, 'success');
+            logUserActivity('move', 'Item', moveMessage);
           }
         });
       }
@@ -2589,6 +2688,10 @@
         // legacy menus are hidden via CSS; nothing to close here
       });
 
+      document.addEventListener('dragend', () => {
+        folderViewHeader.classList.remove('header-drop-target');
+      });
+
       function extractFileKeyFromContent(content) {
         if (typeof content !== 'string') return null;
         if (!content.startsWith('/api/files/')) return null;
@@ -2655,16 +2758,20 @@
 
         if (selectedFolderIndex !== -1) {
           const targetFolder = folders[selectedFolderIndex];
+          const targetFolderName = targetFolder?.name || 'Folder';
           const fileKeys = collectFileKeys(targetFolder?.files || []);
           const deletedFromR2 = await deleteFileKeysFromR2(fileKeys);
 
           folders.splice(selectedFolderIndex, 1);
-          saveDataToServer();
+          const saved = await saveDataToServer();
           renderFolders();
           if (!deletedFromR2 && fileKeys.length > 0) {
             showToast('Folder removed, but some files could not be deleted from R2 storage.');
           } else if (deletedFromR2 && fileKeys.length > 0) {
             showToast('Folder removed and linked files were deleted from R2.', 'success');
+          }
+          if (saved) {
+            logUserActivity('delete', targetFolderName, 'Deleted folder');
           }
           closeActionPanel();
           selectedFolderIndex = -1;
@@ -2680,18 +2787,22 @@
         if (selectedFileIndex !== -1 && currentFolderIndex !== -1) {
           const currentFiles = getCurrentFilesArray();
           const targetItem = currentFiles ? currentFiles[selectedFileIndex] : null;
+          const targetItemName = targetItem?.name || 'Item';
           const fileKeys = Array.isArray(targetItem?.files)
             ? collectFileKeys(targetItem.files)
             : collectFileKeys([targetItem]);
           const deletedFromR2 = await deleteFileKeysFromR2(fileKeys);
 
           if (currentFiles) currentFiles.splice(selectedFileIndex, 1);
-          saveDataToServer();
+          const saved = await saveDataToServer();
           renderFiles();
           if (!deletedFromR2 && fileKeys.length > 0) {
             showToast('Item removed, but the file could not be deleted from R2 storage.');
           } else if (deletedFromR2 && fileKeys.length > 0) {
             showToast('Item removed and linked file was deleted from R2.', 'success');
+          }
+          if (saved) {
+            logUserActivity('delete', targetItemName, 'Deleted item');
           }
           closeActionPanel();
           selectedFileIndex = -1;
@@ -2752,6 +2863,7 @@
         const saved = await saveDataToServer();
         if (saved) {
           showToast(`Moved into ${movedInto}.`, 'success');
+          logUserActivity('move', 'Item', `Moved item into ${movedInto}`);
         }
       });
 
@@ -2993,5 +3105,6 @@
         }
       });
     </script>
+    <script src="/chat-widget.js"></script>
 </body>
 </html>

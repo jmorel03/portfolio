@@ -17,6 +17,10 @@ const SCRYPT_SALT_BYTES = 16;
 
 const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
 const LOGIN_ACTIVITY_FILE = path.join(__dirname, 'data', 'login-activity.json');
+const HIGHLIGHTS_FILE = path.join(__dirname, 'data', 'highlights.json');
+const USER_ACTIVITY_FILE = path.join(__dirname, 'data', 'user-activity.json');
+const THREAD_POSTS_FILE = path.join(__dirname, 'data', 'thread-posts.json');
+const CHAT_MESSAGES_FILE = path.join(__dirname, 'data', 'chat-messages.json');
 
 function timingSafeEqualHex(a, b) {
   const aBuffer = Buffer.from(String(a), 'utf8');
@@ -166,6 +170,33 @@ function hasRole(actualRole, requiredRole) {
   return (ROLE_LEVEL[normalizeRole(actualRole)] || 0) >= (ROLE_LEVEL[normalizeRole(requiredRole)] || Number.MAX_SAFE_INTEGER);
 }
 
+function normalizeRequiredRole(requiredRole) {
+  const value = String(requiredRole || '').trim().toLowerCase();
+  if (!value || value === 'public' || value === 'all' || value === 'none') {
+    return null;
+  }
+
+  return ROLE_LEVEL[value] ? value : null;
+}
+
+function getUploadMetaPath(filePath) {
+  return `${filePath}.meta.json`;
+}
+
+async function readUploadMeta(filePath) {
+  try {
+    const raw = await fs.readFile(getUploadMetaPath(filePath), 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeUploadMeta(filePath, meta) {
+  await fs.writeFile(getUploadMetaPath(filePath), JSON.stringify(meta || {}, null, 2));
+}
+
 function sanitizeAccessUsersForAdmin(users) {
   return (Array.isArray(users) ? users : []).map((user) => ({
     id: user.id,
@@ -181,6 +212,179 @@ function generateUserId() {
   }
 
   return `user-${crypto.randomBytes(8).toString('hex')}`;
+}
+
+function normalizeHighlights(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .slice(0, 24)
+    .map((item) => {
+      const title = String(item?.title || '').trim().slice(0, 120);
+      const description = String(item?.description || '').trim().slice(0, 300);
+      const url = String(item?.url || '').trim().slice(0, 500);
+
+      if (!title || !url) {
+        return null;
+      }
+
+      return { title, description, url };
+    })
+    .filter(Boolean);
+}
+
+async function readHighlights() {
+  try {
+    const raw = await fs.readFile(HIGHLIGHTS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return normalizeHighlights(parsed?.items || parsed);
+  } catch {
+    return [];
+  }
+}
+
+async function writeHighlights(items) {
+  await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+  await fs.writeFile(HIGHLIGHTS_FILE, JSON.stringify({ items: normalizeHighlights(items) }, null, 2));
+}
+
+function normalizeActivityAction(action) {
+  const value = String(action || '').trim().toLowerCase();
+  if (!value) {
+    return null;
+  }
+
+  return value.slice(0, 40);
+}
+
+async function appendUserActivity(req, payload = {}) {
+  const action = normalizeActivityAction(payload.action);
+  if (!action) {
+    return;
+  }
+
+  const target = String(payload.target || '').trim().slice(0, 200);
+  const details = String(payload.details || '').trim().slice(0, 400);
+  const entry = {
+    timestamp: new Date().toISOString(),
+    action,
+    target,
+    details,
+    userId: req.session?.userId || 'unknown',
+    userName: req.session?.name || 'Unknown user',
+    role: normalizeRole(req.session?.role),
+    ip: (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || req.socket?.remoteAddress || 'unknown'
+  };
+
+  let activity = [];
+  try {
+    const raw = await fs.readFile(USER_ACTIVITY_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    activity = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    activity = [];
+  }
+
+  activity.unshift(entry);
+  await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+  await fs.writeFile(USER_ACTIVITY_FILE, JSON.stringify(activity.slice(0, 200), null, 2));
+}
+
+async function readUserActivity() {
+  try {
+    const raw = await fs.readFile(USER_ACTIVITY_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeThreadPosts(posts) {
+  if (!Array.isArray(posts)) {
+    return [];
+  }
+
+  return posts
+    .slice(0, 200)
+    .map((post) => {
+      const id = String(post?.id || '').trim();
+      const author = String(post?.author || '').trim().slice(0, 80);
+      const role = normalizeRole(post?.role);
+      const title = String(post?.title || '').trim().slice(0, 160);
+      const content = String(post?.content || '').trim().slice(0, 4000);
+      const createdAt = String(post?.createdAt || '').trim();
+
+      if (!id || !author || !content || !createdAt) {
+        return null;
+      }
+
+      return { id, author, role, title, content, createdAt };
+    })
+    .filter(Boolean);
+}
+
+async function readThreadPosts() {
+  try {
+    const raw = await fs.readFile(THREAD_POSTS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return normalizeThreadPosts(parsed?.posts || parsed);
+  } catch {
+    return [];
+  }
+}
+
+async function writeThreadPosts(posts) {
+  await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+  await fs.writeFile(THREAD_POSTS_FILE, JSON.stringify({ posts: normalizeThreadPosts(posts) }, null, 2));
+}
+
+function normalizeChatMessages(messages) {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+
+  return messages
+    .slice(-300)
+    .map((message) => {
+      const id = String(message?.id || '').trim();
+      const userId = String(message?.userId || '').trim().slice(0, 120);
+      const userName = String(message?.userName || '').trim().slice(0, 80);
+      const role = normalizeRole(message?.role);
+      const text = String(message?.text || '').trim().slice(0, 800);
+      const createdAt = String(message?.createdAt || '').trim();
+
+      if (!id || !userName || !text || !createdAt) {
+        return null;
+      }
+
+      return {
+        id,
+        userId: userId || 'unknown',
+        userName,
+        role,
+        text,
+        createdAt
+      };
+    })
+    .filter(Boolean);
+}
+
+async function readChatMessages() {
+  try {
+    const raw = await fs.readFile(CHAT_MESSAGES_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return normalizeChatMessages(parsed?.messages || parsed);
+  } catch {
+    return [];
+  }
+}
+
+async function writeChatMessages(messages) {
+  await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+  await fs.writeFile(CHAT_MESSAGES_FILE, JSON.stringify({ messages: normalizeChatMessages(messages) }, null, 2));
 }
 
 ACCESS_USERS = normalizeAccessUsers(null, AUTH_CODE);
@@ -485,12 +689,153 @@ app.delete('/api/access-users/:id', requireRole('admin'), async (req, res) => {
   }
 });
 
+app.get('/api/highlights', async (req, res) => {
+  try {
+    const items = await readHighlights();
+    res.json({ ok: true, items });
+  } catch (error) {
+    console.error('Error reading highlights:', error);
+    res.status(500).json({ ok: false, error: 'Failed to load highlights' });
+  }
+});
+
+app.post('/api/highlights', requireRole('admin'), async (req, res) => {
+  try {
+    const items = normalizeHighlights(req.body?.items || []);
+    await writeHighlights(items);
+    res.json({ ok: true, items });
+  } catch (error) {
+    console.error('Error saving highlights:', error);
+    res.status(500).json({ ok: false, error: 'Failed to save highlights' });
+  }
+});
+
+app.post('/api/user-activity', requireAuth, async (req, res) => {
+  try {
+    await appendUserActivity(req, req.body || {});
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Error appending user activity:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to record activity' });
+  }
+});
+
+app.get('/api/user-activity', requireRole('admin'), async (req, res) => {
+  try {
+    const activity = await readUserActivity();
+    return res.json({ ok: true, activity });
+  } catch (error) {
+    console.error('Error reading user activity:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to load activity' });
+  }
+});
+
+app.get('/api/thread-posts', requireAuth, async (req, res) => {
+  try {
+    const posts = await readThreadPosts();
+    return res.json({ ok: true, posts });
+  } catch (error) {
+    console.error('Error reading thread posts:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to load thread posts' });
+  }
+});
+
+app.post('/api/thread-posts', requireRole('editor'), async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 160);
+    const content = String(req.body?.content || '').trim().slice(0, 4000);
+
+    if (!content) {
+      return res.status(400).json({ ok: false, error: 'Post content is required' });
+    }
+
+    const posts = await readThreadPosts();
+    posts.unshift({
+      id: generateUserId(),
+      author: String(req.session?.name || 'Unknown user').slice(0, 80),
+      role: normalizeRole(req.session?.role),
+      title,
+      content,
+      createdAt: new Date().toISOString()
+    });
+
+    const normalized = normalizeThreadPosts(posts);
+    await writeThreadPosts(normalized);
+
+    await appendUserActivity(req, {
+      action: 'post',
+      target: title || 'Thread post',
+      details: 'Created a thread/blog post'
+    });
+
+    return res.json({ ok: true, posts: normalized });
+  } catch (error) {
+    console.error('Error creating thread post:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to create thread post' });
+  }
+});
+
+app.get('/api/chat-messages', requireAuth, async (req, res) => {
+  try {
+    const messages = await readChatMessages();
+    return res.json({ ok: true, messages });
+  } catch (error) {
+    console.error('Error reading chat messages:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to load chat messages' });
+  }
+});
+
+app.post('/api/chat-messages', requireAuth, async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').trim().slice(0, 800);
+    if (!text) {
+      return res.status(400).json({ ok: false, error: 'Message text is required' });
+    }
+
+    const messages = await readChatMessages();
+    messages.push({
+      id: generateUserId(),
+      userId: String(req.session?.userId || 'unknown'),
+      userName: String(req.session?.name || 'Unknown user').slice(0, 80),
+      role: normalizeRole(req.session?.role),
+      text,
+      createdAt: new Date().toISOString()
+    });
+
+    const normalized = normalizeChatMessages(messages);
+    await writeChatMessages(normalized);
+
+    await appendUserActivity(req, {
+      action: 'chat',
+      target: 'Chat',
+      details: 'Sent a chat message'
+    });
+
+    return res.json({ ok: true, messages: normalized });
+  } catch (error) {
+    console.error('Error creating chat message:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to send chat message' });
+  }
+});
+
 app.get('/pages/main.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'pages', 'main.html'));
 });
 
 app.get('/pages/settings.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'pages', 'settings.html'));
+});
+
+app.get('/pages/admin.html', requireRole('admin'), (req, res) => {
+  res.sendFile(path.join(__dirname, 'pages', 'admin.html'));
+});
+
+app.get('/pages/highlights.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'pages', 'highlights.html'));
+});
+
+app.get('/pages/thread.html', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'pages', 'thread.html'));
 });
 
 // Data synchronization endpoints
@@ -544,13 +889,27 @@ app.post('/api/upload', requireRole('editor'), upload.single('file'), async (req
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+
+    const requiredRole = normalizeRequiredRole(req.body?.requiredRole);
+    await writeUploadMeta(req.file.path, {
+      originalName: req.file.originalname,
+      contentType: req.file.mimetype,
+      requiredRole
+    });
+
+    await appendUserActivity(req, {
+      action: 'upload',
+      target: req.file.originalname,
+      details: `Uploaded file (${req.file.size} bytes)`
+    });
     
     // Return file information
     const fileInfo = {
       filename: req.file.filename,
       originalName: req.file.originalname,
       size: req.file.size,
-      url: `/api/files/${req.file.filename}`
+      url: `/api/files/${req.file.filename}`,
+      requiredRole
     };
     
     res.json(fileInfo);
@@ -561,9 +920,22 @@ app.post('/api/upload', requireRole('editor'), upload.single('file'), async (req
 });
 
 // Serve uploaded files
-app.get('/api/files/:filename', requireAuth, async (req, res) => {
+app.get('/api/files/:filename', async (req, res) => {
   try {
     const filePath = path.join(__dirname, 'data', 'uploads', req.params.filename);
+
+    const meta = await readUploadMeta(filePath);
+    const requiredRole = normalizeRequiredRole(meta.requiredRole);
+    if (requiredRole) {
+      if (!req.session?.authenticated) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+      }
+
+      if (!hasRole(req.session?.role, requiredRole)) {
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+      }
+    }
+
     res.sendFile(filePath);
   } catch (error) {
     console.error('Error serving file:', error);

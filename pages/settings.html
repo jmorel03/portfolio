@@ -1,1470 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account Settings - Portfolio</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .user-identity-badge {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            display: none;
-            flex-direction: column;
-            gap: 2px;
-            padding: 12px 16px;
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.92);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            min-width: 170px;
-        }
-
-        .user-identity-label {
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #718096;
-        }
-
-        .user-identity-name {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #2d3748;
-        }
-
-        .user-identity-role {
-            font-size: 0.82rem;
-            font-weight: 600;
-        }
-
-        .role-admin {
-            color: #c2410c;
-        }
-
-        .role-editor {
-            color: #0f766e;
-        }
-
-        .role-viewer {
-            color: #5a67d8;
-        }
-
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header h1 {
-            color: #667eea;
-            font-size: 2.5rem;
-            font-weight: 700;
-        }
-
-        .back-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .back-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .settings-section {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-
-        .settings-section h2 {
-            color: #667eea;
-            font-size: 1.8rem;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-            padding-bottom: 10px;
-        }
-
-        .section-header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .section-header-row h2 {
-            margin-bottom: 0;
-            flex: 1;
-        }
-
-        .filter-controls {
-            display: flex;
-            align-items: end;
-            gap: 12px;
-            margin-bottom: 18px;
-            padding: 14px 16px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-        }
-
-        .filter-controls .setting-group {
-            margin-bottom: 0;
-            min-width: 180px;
-        }
-
-        .setting-group {
-            margin-bottom: 25px;
-        }
-
-        .setting-group label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #555;
-        }
-
-        .setting-group input,
-        .setting-group select,
-        .setting-group textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e1e1e1;
-            border-radius: 8px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-            background: rgba(255, 255, 255, 0.8);
-        }
-
-        .setting-group input:focus,
-        .setting-group select:focus,
-        .setting-group textarea:focus {
-            outline: none;
-            border-color: #667eea;
-            background: white;
-        }
-
-        .setting-group textarea {
-            resize: vertical;
-            min-height: 100px;
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: auto;
-            margin: 0;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 15px;
-            margin-top: 30px;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: #f8f9fa;
-            color: #666;
-            border: 2px solid #e1e1e1;
-        }
-
-        .btn-secondary:hover {
-            background: #e9ecef;
-            border-color: #adb5bd;
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
-        }
-
-        .danger-section {
-            border-left: 4px solid #ff6b6b;
-            background: rgba(255, 107, 107, 0.05);
-        }
-
-        .success-message {
-            background: rgba(40, 167, 69, 0.1);
-            color: #28a745;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(40, 167, 69, 0.2);
-            display: none;
-        }
-
-        .error-message {
-            background: rgba(220, 53, 69, 0.1);
-            color: #dc3545;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(220, 53, 69, 0.2);
-            display: none;
-        }
-
-        .form-row {
-            display: flex;
-            gap: 20px;
-        }
-
-        .form-row .setting-group {
-            flex: 1;
-        }
-
-        .activity-log {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .activity-log li {
-            padding: 10px 0;
-            border-bottom: 1px solid #ececec;
-            color: #555;
-            font-size: 0.95rem;
-        }
-
-        .activity-entry {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .activity-meta {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .activity-details {
-            color: #64748b;
-            font-size: 0.9rem;
-        }
-
-        .activity-log li:last-child {
-            border-bottom: none;
-        }
-
-        .admin-user-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 10px;
-        }
-
-        .admin-user-info {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .admin-user-meta {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .role-pill {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-size: 0.78rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            background: #eef2ff;
-        }
-
-        .role-pill.role-admin {
-            background: #ffedd5;
-        }
-
-        .role-pill.role-editor {
-            background: #ccfbf1;
-        }
-
-        .role-pill.role-viewer {
-            background: #e0e7ff;
-        }
-
-        .admin-user-code {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            font-size: 0.9rem;
-            color: #475569;
-        }
-
-        .admin-user-code strong {
-            color: #334155;
-        }
-
-        .access-code-value {
-            min-width: 40px;
-            font-family: Consolas, 'Courier New', monospace;
-            letter-spacing: 0.12em;
-            color: #0f172a;
-        }
-
-        .admin-user-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .mini-btn {
-            border: 1px solid #d5dbe5;
-            background: #f8fafc;
-            color: #334155;
-            border-radius: 8px;
-            padding: 6px 10px;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-
-        .mini-btn:hover {
-            background: #eef2f7;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.45);
-            backdrop-filter: blur(6px);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 3000;
-            padding: 20px;
-        }
-
-        .modal-overlay.open {
-            display: flex;
-        }
-
-        .modal-card {
-            width: min(100%, 520px);
-            background: rgba(255, 255, 255, 0.97);
-            border-radius: 18px;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            overflow: hidden;
-        }
-
-        .modal-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 22px 24px 16px;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        .modal-card-header h3 {
-            margin: 0;
-            color: #334155;
-            font-size: 1.25rem;
-        }
-
-        .modal-close-btn {
-            border: none;
-            background: transparent;
-            color: #64748b;
-            font-size: 1.8rem;
-            line-height: 1;
-            cursor: pointer;
-            padding: 0;
-        }
-
-        .modal-card-body {
-            padding: 22px 24px;
-        }
-
-        .modal-help {
-            margin: -4px 0 18px;
-            color: #64748b;
-            font-size: 0.92rem;
-        }
-
-        .modal-card-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-            padding: 18px 24px 24px;
-            border-top: 1px solid #e2e8f0;
-        }
-
-        @media (max-width: 768px) {
-            .user-identity-badge {
-                top: 12px;
-                left: 12px;
-                min-width: 150px;
-                padding: 10px 14px;
-            }
-
-            .section-header-row {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .filter-controls {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .form-row {
-                flex-direction: column;
-            }
-
-            .btn-group {
-                flex-direction: column;
-            }
-
-            .header {
-                flex-direction: column;
-                gap: 20px;
-                text-align: center;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Portfolio</title>
+  <link rel="stylesheet" href="/chat-widget.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+      padding: 24px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    .header, .section {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      margin-bottom: 16px;
+    }
+    .header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .header h1 { color: #667eea; font-size: 2rem; }
+    .back-btn, .btn {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .back-btn, .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+    }
+    .btn-secondary {
+      background: #eef2ff;
+      color: #4338ca;
+    }
+    h2 { color: #4c51bf; margin-bottom: 16px; }
+    .setting-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; color: #555; margin-bottom: 8px; }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .setting-group { flex: 1; }
+    .checkbox-group { display: flex; align-items: center; gap: 10px; }
+    .checkbox-group input { width: auto; }
+    .btn-row { display: flex; gap: 12px; }
+    .message {
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .success { background: #dcfce7; color: #166534; }
+    .error { background: #fee2e2; color: #991b1b; }
+    .hint { color: #64748b; font-size: 0.95rem; }
+    @media (max-width: 768px) {
+      .form-row { flex-direction: column; }
+      .header { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
 </head>
 <body>
-    <div id="userIdentityBadge" class="user-identity-badge" aria-live="polite">
-        <span class="user-identity-label">Signed in as</span>
-        <span id="userIdentityName" class="user-identity-name"></span>
-        <span id="userIdentityRole" class="user-identity-role"></span>
+  <div class="container">
+    <div class="header">
+      <h1>Settings</h1>
+      <a href="/pages/main.html" class="back-btn">← Back to Portfolio</a>
     </div>
 
-    <div class="container">
-        <div class="header">
-            <h1>Account Settings</h1>
-            <a href="/pages/main.html" class="back-btn">← Back to Portfolio</a>
+    <div id="successMessage" class="message success"></div>
+    <div id="errorMessage" class="message error"></div>
+
+    <div class="section">
+      <h2>Access Code</h2>
+      <p class="hint" style="margin-bottom: 16px;">Change your own 4-digit access code.</p>
+      <div class="setting-group">
+        <label for="currentCode">Current Access Code</label>
+        <input type="password" id="currentCode" maxlength="4" pattern="\d{4}" placeholder="Current code">
+      </div>
+      <div class="form-row">
+        <div class="setting-group">
+          <label for="newCode">New Access Code</label>
+          <input type="password" id="newCode" maxlength="4" pattern="\d{4}" placeholder="New code">
         </div>
-
-        <div id="successMessage" class="success-message">
-            Settings saved successfully!
+        <div class="setting-group">
+          <label for="confirmCode">Confirm New Access Code</label>
+          <input type="password" id="confirmCode" maxlength="4" pattern="\d{4}" placeholder="Confirm new code">
         </div>
-
-        <div id="errorMessage" class="error-message">
-            Error saving settings. Please try again.
-        </div>
-
-        <div class="settings-section">
-            <h2>Access Code</h2>
-
-            <div class="setting-group">
-                <label for="currentCode">Current Access Code</label>
-                <input type="password" id="currentCode" placeholder="Enter current 4-digit code" maxlength="4" pattern="\d{4}">
-            </div>
-
-            <div class="form-row">
-                <div class="setting-group">
-                    <label for="newCode">New Access Code</label>
-                    <input type="password" id="newCode" placeholder="Enter new 4-digit code" maxlength="4" pattern="\d{4}">
-                </div>
-
-                <div class="setting-group">
-                    <label for="confirmCode">Confirm New Access Code</label>
-                    <input type="password" id="confirmCode" placeholder="Confirm new 4-digit code" maxlength="4" pattern="\d{4}">
-                </div>
-            </div>
-
-            <div class="setting-group checkbox-group">
-                <input type="checkbox" id="twoFactor">
-                <label for="twoFactor">Enable two-factor authentication</label>
-            </div>
-        </div>
-
-        <div class="settings-section danger-section">
-            <h2>Danger Zone</h2>
-
-            <div class="setting-group">
-                <p style="color: #666; margin-bottom: 15px;">
-                    These actions cannot be undone. Please be certain before proceeding.
-                </p>
-
-                <div class="btn-group">
-                    <button class="btn btn-danger" id="deleteAllData">Delete All Portfolio Data</button>
-                    <button class="btn btn-secondary" id="setDeletePasswordBtn">Set / Change Delete Password</button>
-                </div>
-
-                <div id="deletePasswordForm" class="setting-group hidden" style="margin-top: 20px;">
-                    <div class="setting-group">
-                        <label for="currentDeletePassword">Current Delete Password (required if already set)</label>
-                        <input type="password" id="currentDeletePassword" placeholder="Enter current delete password">
-                    </div>
-                    <div class="form-row">
-                        <div class="setting-group">
-                            <label for="newDeletePassword">New Delete Password</label>
-                            <input type="password" id="newDeletePassword" placeholder="Enter new delete password">
-                        </div>
-                        <div class="setting-group">
-                            <label for="confirmDeletePassword">Confirm New Delete Password</label>
-                            <input type="password" id="confirmDeletePassword" placeholder="Confirm new delete password">
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" id="saveDeletePassword">Save Delete Password</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="settings-section hidden" id="loginActivitySection">
-            <div class="section-header-row">
-                <h2>Login Activity</h2>
-                <button class="btn btn-secondary" id="toggleActivityFilters" type="button">Show Filters</button>
-            </div>
-            <div id="activityFilterControls" class="filter-controls hidden">
-                <div class="setting-group">
-                    <label for="activityRoleFilter">Filter by role</label>
-                    <select id="activityRoleFilter">
-                        <option value="all">All Roles</option>
-                        <option value="admin">Admin</option>
-                        <option value="editor">Editor</option>
-                        <option value="viewer">Viewer</option>
-                    </select>
-                </div>
-            </div>
-            <ul id="loginActivityList" class="activity-log">
-                <li>Loading recent login activity...</li>
-            </ul>
-        </div>
-
-        <div class="settings-section hidden" id="adminAccessSection">
-            <h2>Admin Access</h2>
-            <p style="color: #666; margin-bottom: 15px;">Manage who can access this shared portfolio.</p>
-
-            <ul id="accessUsersList" class="activity-log">
-                <li>Loading access users...</li>
-            </ul>
-
-            <div class="form-row" style="margin-top: 20px;">
-                <div class="setting-group">
-                    <label for="adminUserName">Name</label>
-                    <input type="text" id="adminUserName" placeholder="Enter user name">
-                </div>
-                <div class="setting-group">
-                    <label for="adminUserCode">4-Digit Code</label>
-                    <input type="password" id="adminUserCode" maxlength="4" pattern="\d{4}" placeholder="1234">
-                </div>
-                <div class="setting-group">
-                    <label for="adminUserRole">Role</label>
-                    <select id="adminUserRole">
-                        <option value="viewer">Viewer</option>
-                        <option value="editor">Editor</option>
-                        <option value="admin">Admin</option>
-                    </select>
-                </div>
-            </div>
-
-            <button class="btn btn-primary" id="addAccessUserBtn">Add User</button>
-        </div>
-
-        <div id="editAccessUserModal" class="modal-overlay" aria-hidden="true">
-            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editAccessUserTitle">
-                <div class="modal-card-header">
-                    <h3 id="editAccessUserTitle">Edit User</h3>
-                    <button type="button" class="modal-close-btn" id="closeEditAccessUserModal" aria-label="Close">&times;</button>
-                </div>
-                <div class="modal-card-body">
-                    <p class="modal-help">Update the user name and role. Leave the code blank to keep the current one.</p>
-                    <div class="setting-group">
-                        <label for="editAdminUserName">Name</label>
-                        <input type="text" id="editAdminUserName" placeholder="Enter user name">
-                    </div>
-                    <div class="form-row">
-                        <div class="setting-group">
-                            <label for="editAdminUserRole">Role</label>
-                            <select id="editAdminUserRole">
-                                <option value="viewer">Viewer</option>
-                                <option value="editor">Editor</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                        </div>
-                        <div class="setting-group">
-                            <label for="editAdminUserCode">New 4-Digit Code</label>
-                            <input type="password" id="editAdminUserCode" maxlength="4" pattern="\d{4}" placeholder="Leave blank to keep current">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-card-footer">
-                    <button type="button" class="btn btn-secondary" id="cancelEditAccessUserBtn">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveEditAccessUserBtn">Save Changes</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="codeInUseModal" class="modal-overlay" aria-hidden="true">
-            <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="codeInUseTitle">
-                <div class="modal-card-header">
-                    <h3 id="codeInUseTitle">Code Already In Use</h3>
-                    <button type="button" class="modal-close-btn" id="closeCodeInUseModalX" aria-label="Close">&times;</button>
-                </div>
-                <div class="modal-card-body">
-                    <p style="color:#dc2626;font-weight:600;margin-bottom:10px;">&#9888;&#65039; That 4-digit code is already assigned to another user.</p>
-                    <p style="color:#64748b;font-size:0.95rem;">Please choose a different code &mdash; each user must have a unique access code.</p>
-                </div>
-                <div class="modal-card-footer">
-                    <button type="button" class="btn btn-primary" id="closeCodeInUseModalBtn">OK, I'll choose another</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="deleteDataConfirmModal" class="modal-overlay" aria-hidden="true">
-            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteDataConfirmTitle">
-                <div class="modal-card-header">
-                    <h3 id="deleteDataConfirmTitle">Confirm Data Deletion</h3>
-                    <button type="button" class="modal-close-btn" id="closeDeleteDataConfirmModal" aria-label="Close">&times;</button>
-                </div>
-                <div class="modal-card-body">
-                    <p class="modal-help">Enter your delete password to permanently remove all portfolio data.</p>
-                    <div class="setting-group" style="margin-bottom: 0;">
-                        <label for="deleteDataConfirmPassword">Delete Password</label>
-                        <input type="password" id="deleteDataConfirmPassword" placeholder="Enter delete password">
-                    </div>
-                </div>
-                <div class="modal-card-footer">
-                    <button type="button" class="btn btn-secondary" id="cancelDeleteDataConfirmBtn">Cancel</button>
-                    <button type="button" class="btn btn-danger" id="confirmDeleteDataConfirmBtn">Delete All Data</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="settings-section">
-            <div class="btn-group">
-                <button class="btn btn-primary" id="saveSettings">Save Settings</button>
-                <button class="btn btn-secondary" id="resetSettings">Reset to Defaults</button>
-            </div>
-        </div>
+      </div>
+      <div class="btn-row">
+        <button id="saveCodeBtn" class="btn btn-primary">Update Access Code</button>
+      </div>
     </div>
 
-    <script>
-        let allLoginActivity = [];
-        let editingAccessUserId = null;
+    <div class="section">
+      <h2>Preferences</h2>
+      <div class="setting-group checkbox-group">
+        <input type="checkbox" id="twoFactor">
+        <label for="twoFactor">Enable two-factor authentication (local preference)</label>
+      </div>
+      <div class="btn-row">
+        <button id="saveSettings" class="btn btn-primary">Save Settings</button>
+        <button id="resetSettings" class="btn btn-secondary">Reset</button>
+      </div>
+    </div>
+  </div>
 
-        function formatRoleLabel(role) {
-            const normalized = String(role || '').toLowerCase();
-            if (!normalized) {
-                return 'Unknown role';
-            }
+  <script>
+    function showSuccess(message) {
+      const el = document.getElementById('successMessage');
+      const errorEl = document.getElementById('errorMessage');
+      el.textContent = message;
+      el.style.display = 'block';
+      errorEl.style.display = 'none';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
 
-            return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-        }
+    function showError(message) {
+      const el = document.getElementById('errorMessage');
+      const successEl = document.getElementById('successMessage');
+      el.textContent = message;
+      el.style.display = 'block';
+      successEl.style.display = 'none';
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
 
-        function getRoleClass(role) {
-            const normalized = String(role || '').toLowerCase();
-            if (normalized === 'admin') {
-                return 'role-admin';
-            }
+    function getDefaultSettings() {
+      return { twoFactor: false };
+    }
 
-            if (normalized === 'editor') {
-                return 'role-editor';
-            }
+    function loadSettings() {
+      const settings = JSON.parse(localStorage.getItem('userSettings')) || getDefaultSettings();
+      document.getElementById('twoFactor').checked = !!settings.twoFactor;
+    }
 
-            return 'role-viewer';
-        }
+    function saveSettings() {
+      const settings = {
+        twoFactor: document.getElementById('twoFactor').checked,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('userSettings', JSON.stringify(settings));
+      showSuccess('Settings saved successfully.');
+    }
 
-        async function loadCurrentUserIdentity() {
-            const badge = document.getElementById('userIdentityBadge');
-            const nameElement = document.getElementById('userIdentityName');
-            const roleElement = document.getElementById('userIdentityRole');
+    function resetSettings() {
+      localStorage.setItem('userSettings', JSON.stringify(getDefaultSettings()));
+      loadSettings();
+      showSuccess('Settings reset to defaults.');
+    }
 
-            try {
-                const response = await fetch('/api/me', {
-                    credentials: 'include'
-                });
+    async function changeAccessCode() {
+      const currentCode = document.getElementById('currentCode').value.trim();
+      const newCode = document.getElementById('newCode').value.trim();
+      const confirmCode = document.getElementById('confirmCode').value.trim();
 
-                if (!response.ok) {
-                    badge.style.display = 'none';
-                    return;
-                }
+      if (!/^\d{4}$/.test(currentCode) || !/^\d{4}$/.test(newCode)) {
+        showError('Both current and new code must be exactly 4 digits.');
+        return;
+      }
 
-                const result = await response.json();
-                const user = result?.user;
-                nameElement.textContent = user?.name || 'Unknown user';
-                roleElement.textContent = formatRoleLabel(user?.role);
-                roleElement.className = `user-identity-role ${getRoleClass(user?.role)}`;
-                badge.style.display = 'flex';
-            } catch (error) {
-                console.error('Error loading current user identity:', error);
-                badge.style.display = 'none';
-            }
-        }
+      if (newCode !== confirmCode) {
+        showError('New access codes do not match.');
+        return;
+      }
 
-        // Load current settings
-        document.addEventListener('DOMContentLoaded', function() {
-            loadCurrentUserIdentity();
-            loadSettings();
-            loadAdminAccess();
+      try {
+        const response = await fetch('/api/change-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ currentCode, newCode, confirmCode })
         });
 
-        // Save settings
-        document.getElementById('saveSettings').addEventListener('click', function() {
-            saveSettings();
-        });
-
-        // Reset settings
-        document.getElementById('resetSettings').addEventListener('click', function() {
-              resetSettings();
-        });
-
-        // Delete all data
-        document.getElementById('deleteAllData').addEventListener('click', function() {
-                openDeleteDataConfirmModal();
-        });
-
-        document.getElementById('closeDeleteDataConfirmModal').addEventListener('click', function() {
-            closeDeleteDataConfirmModal();
-        });
-
-        document.getElementById('cancelDeleteDataConfirmBtn').addEventListener('click', function() {
-            closeDeleteDataConfirmModal();
-        });
-
-        document.getElementById('confirmDeleteDataConfirmBtn').addEventListener('click', function() {
-            submitDeleteAllDataConfirm();
-        });
-
-        document.getElementById('deleteDataConfirmModal').addEventListener('click', function(event) {
-            if (event.target === this) {
-                closeDeleteDataConfirmModal();
-            }
-        });
-
-        document.getElementById('setDeletePasswordBtn').addEventListener('click', function() {
-            const form = document.getElementById('deletePasswordForm');
-            form.classList.toggle('hidden');
-        });
-
-        document.getElementById('saveDeletePassword').addEventListener('click', function() {
-            saveDeletePassword();
-        });
-
-        document.getElementById('addAccessUserBtn').addEventListener('click', function() {
-            createAccessUser();
-        });
-
-        document.getElementById('closeCodeInUseModalX').addEventListener('click', function() {
-            closeCodeInUseModal();
-        });
-
-        document.getElementById('closeCodeInUseModalBtn').addEventListener('click', function() {
-            closeCodeInUseModal();
-        });
-
-        document.getElementById('codeInUseModal').addEventListener('click', function(event) {
-            if (event.target === this) {
-                closeCodeInUseModal();
-            }
-        });
-
-        document.getElementById('closeEditAccessUserModal').addEventListener('click', function() {
-            closeEditAccessUserModal();
-        });
-
-        document.getElementById('cancelEditAccessUserBtn').addEventListener('click', function() {
-            closeEditAccessUserModal();
-        });
-
-        document.getElementById('saveEditAccessUserBtn').addEventListener('click', function() {
-            submitEditAccessUser();
-        });
-
-        document.getElementById('editAccessUserModal').addEventListener('click', function(event) {
-            if (event.target === this) {
-                closeEditAccessUserModal();
-            }
-        });
-
-        document.getElementById('toggleActivityFilters').addEventListener('click', function() {
-            const controls = document.getElementById('activityFilterControls');
-            const shouldShow = controls.classList.contains('hidden');
-            controls.classList.toggle('hidden', !shouldShow);
-            this.textContent = shouldShow ? 'Hide Filters' : 'Show Filters';
-
-            if (!shouldShow) {
-                document.getElementById('activityRoleFilter').value = 'all';
-                renderLoginActivity(allLoginActivity);
-            }
-        });
-
-        document.getElementById('activityRoleFilter').addEventListener('change', function() {
-            renderLoginActivity(allLoginActivity);
-        });
-
-        document.getElementById('accessUsersList').addEventListener('click', function(event) {
-            const button = event.target.closest('button[data-action][data-user-id]');
-            if (!button) {
-                return;
-            }
-
-            const action = button.getAttribute('data-action');
-            const userId = button.getAttribute('data-user-id');
-            const userName = button.getAttribute('data-user-name') || 'User';
-            const userRole = button.getAttribute('data-user-role') || 'viewer';
-
-            if (action === 'edit') {
-                editAccessUser(userId, userName, userRole);
-                return;
-            }
-
-            if (action === 'toggle-code') {
-                const codeValue = button.closest('.admin-user-code')?.querySelector('.access-code-value');
-                if (!codeValue) {
-                    return;
-                }
-
-                const isHidden = codeValue.getAttribute('data-hidden') !== 'false';
-                const userCode = button.getAttribute('data-user-code') || '----';
-                codeValue.textContent = isHidden ? userCode : '••••';
-                codeValue.setAttribute('data-hidden', isHidden ? 'false' : 'true');
-                button.textContent = isHidden ? 'Hide' : 'Show';
-                return;
-            }
-
-            if (action === 'delete') {
-                deleteAccessUser(userId, userName);
-            }
-        });
-
-        function loadSettings() {
-            // Load settings from localStorage
-            const settings = JSON.parse(localStorage.getItem('userSettings')) || getDefaultSettings();
-
-            document.getElementById('twoFactor').checked = settings.twoFactor || false;
+        const result = await response.json();
+        if (!response.ok) {
+          showError(result.error || 'Failed to update access code.');
+          return;
         }
 
-        function saveSettings() {
-            const currentCode = document.getElementById('currentCode').value.trim();
-            const newCode = document.getElementById('newCode').value.trim();
-            const confirmCode = document.getElementById('confirmCode').value.trim();
+        document.getElementById('currentCode').value = '';
+        document.getElementById('newCode').value = '';
+        document.getElementById('confirmCode').value = '';
+        showSuccess('Access code updated successfully.');
+      } catch (error) {
+        console.error('Error changing code:', error);
+        showError('Network error. Please try again.');
+      }
+    }
 
-            // If user is trying to change access code
-            if (newCode) {
-                // Validate current code (we can't actually check it on client side, but we can validate format)
-                if (!/^\d{4}$/.test(currentCode)) {
-                    showError('Current access code must be 4 digits!');
-                    return;
-                }
-
-                if (!/^\d{4}$/.test(newCode)) {
-                    showError('New access code must be 4 digits!');
-                    return;
-                }
-
-                if (newCode !== confirmCode) {
-                    showError('New access codes do not match!');
-                    return;
-                }
-
-                // Send to server to change the code
-                changeAccessCode(currentCode, newCode, confirmCode);
-                return;
-            }
-
-            // Save other settings
-            const settings = {
-                twoFactor: document.getElementById('twoFactor').checked,
-                lastUpdated: new Date().toISOString()
-            };
-
-            // Save to localStorage
-            localStorage.setItem('userSettings', JSON.stringify(settings));
-
-            showSuccess('Settings saved successfully!');
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const meResponse = await fetch('/api/me', { credentials: 'include' });
+        if (!meResponse.ok) {
+          window.location.href = '/';
+          return;
         }
-
-        async function changeAccessCode(currentCode, newCode, confirmCode) {
-            try {
-                const response = await fetch('/api/change-code', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({ 
-                        currentCode, 
-                        newCode, 
-                        confirmCode 
-                    })
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    showSuccess('Access code updated successfully! You will need to use the new code to log in next time.');
-                    
-                    // Clear code fields
-                    document.getElementById('currentCode').value = '';
-                    document.getElementById('newCode').value = '';
-                    document.getElementById('confirmCode').value = '';
-                } else {
-                    showError(result.error || 'Failed to update access code');
-                }
-            } catch (error) {
-                console.error('Error changing code:', error);
-                showError('Network error. Please try again.');
-            }
-        }
-
-        function resetSettings() {
-            const defaults = getDefaultSettings();
-            localStorage.setItem('userSettings', JSON.stringify(defaults));
-            loadSettings();
-            showSuccess('Settings reset to defaults!');
-        }
-
-        async function saveDeletePassword() {
-            const currentPassword = document.getElementById('currentDeletePassword').value.trim();
-            const newPassword = document.getElementById('newDeletePassword').value.trim();
-            const confirmPassword = document.getElementById('confirmDeletePassword').value.trim();
-
-            if (!newPassword) {
-                showError('Please enter a new delete password.');
-                return;
-            }
-
-            if (newPassword.length < 4) {
-                showError('Delete password must be at least 4 characters.');
-                return;
-            }
-
-            if (newPassword !== confirmPassword) {
-                showError('Delete passwords do not match.');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/delete-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        currentPassword,
-                        newPassword,
-                        confirmPassword
-                    })
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    showSuccess('Delete password saved successfully.');
-                    document.getElementById('currentDeletePassword').value = '';
-                    document.getElementById('newDeletePassword').value = '';
-                    document.getElementById('confirmDeletePassword').value = '';
-                    document.getElementById('deletePasswordForm').classList.add('hidden');
-                } else {
-                    showError(result.error || 'Failed to save delete password.');
-                }
-            } catch (error) {
-                console.error('Error saving delete password:', error);
-                showError('Network error. Please try again.');
-            }
-        }
-
-        function openDeleteDataConfirmModal() {
-            const modal = document.getElementById('deleteDataConfirmModal');
-            modal.classList.add('open');
-            modal.setAttribute('aria-hidden', 'false');
-            document.getElementById('deleteDataConfirmPassword').value = '';
-            document.getElementById('deleteDataConfirmPassword').focus();
-        }
-
-        function closeDeleteDataConfirmModal() {
-            const modal = document.getElementById('deleteDataConfirmModal');
-            modal.classList.remove('open');
-            modal.setAttribute('aria-hidden', 'true');
-            document.getElementById('deleteDataConfirmPassword').value = '';
-        }
-
-        async function submitDeleteAllDataConfirm() {
-            const password = document.getElementById('deleteDataConfirmPassword').value.trim();
-
-            if (!password) {
-                showError('Delete password is required.');
-                return;
-            }
-
-            await deleteAllPortfolioData(password);
-        }
-
-        async function deleteAllPortfolioData(password) {
-            const normalizedPassword = String(password || '').trim();
-
-            if (!normalizedPassword) {
-                showError('Delete password is required.');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/data-all', {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({ password: normalizedPassword })
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    closeDeleteDataConfirmModal();
-                    localStorage.removeItem('folders');
-                    localStorage.removeItem('userSettings');
-                    showSuccess('All portfolio data has been deleted.');
-                    setTimeout(() => {
-                        window.location.href = '/pages/main.html';
-                    }, 1500);
-                } else {
-                    showError(result.error || 'Failed to delete all data.');
-                }
-            } catch (error) {
-                console.error('Error deleting all data:', error);
-                showError('Network error. Please try again.');
-            }
-        }
-
-        function renderLoginActivity(activity) {
-            const list = document.getElementById('loginActivityList');
-            const selectedRole = document.getElementById('activityRoleFilter').value;
-            const escapeHtml = (value) => String(value || '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-
-            const entries = (Array.isArray(activity) ? activity : []).filter((entry) => {
-                if (selectedRole === 'all') {
-                    return true;
-                }
-
-                return String(entry?.role || '').toLowerCase() === selectedRole;
-            });
-
-            if (!entries.length) {
-                list.innerHTML = '<li>No login activity matches the selected filter.</li>';
-                return;
-            }
-
-            list.innerHTML = entries.slice(0, 8).map((entry) => {
-                const time = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Unknown time';
-                const location = entry.location || 'Local';
-                const ip = entry.ip || 'unknown IP';
-                const userName = escapeHtml(entry.userName || 'Unknown user');
-                const userCode = escapeHtml(entry.userCode || 'Unknown code');
-                const safeDisplayRole = escapeHtml(formatRoleLabel(entry.role));
-                const roleClass = getRoleClass(entry.role);
-                return `<li><div class="activity-entry"><div class="activity-meta"><span>${userName}</span><span class="role-pill ${roleClass}">${safeDisplayRole}</span></div><div class="activity-details">${time} — ${userCode} — ${location} — ${ip}</div></div></li>`;
-            }).join('');
-        }
-
-        async function loadLoginActivity() {
-            const list = document.getElementById('loginActivityList');
-
-            try {
-                const response = await fetch('/api/login-activity', {
-                    credentials: 'include'
-                });
-
-                const result = await response.json();
-
-                if (!response.ok) {
-                    list.innerHTML = '<li>Unable to load login activity.</li>';
-                    return;
-                }
-
-                const activity = Array.isArray(result.activity) ? result.activity : [];
-                allLoginActivity = activity;
-
-                if (!activity.length) {
-                    list.innerHTML = '<li>No recent login activity found.</li>';
-                    return;
-                }
-
-                renderLoginActivity(activity);
-            } catch (error) {
-                console.error('Error loading login activity:', error);
-                list.innerHTML = '<li>Unable to load login activity.</li>';
-            }
-        }
-
-        async function loadAdminAccess() {
-            try {
-                const meResponse = await fetch('/api/me', {
-                    credentials: 'include'
-                });
-
-                const meResult = await meResponse.json();
-                if (!meResponse.ok || meResult?.user?.role !== 'admin') {
-                    return;
-                }
-
-                const loginActivitySection = document.getElementById('loginActivitySection');
-                const adminSection = document.getElementById('adminAccessSection');
-                loginActivitySection.classList.remove('hidden');
-                adminSection.classList.remove('hidden');
-                await Promise.all([loadLoginActivity(), loadAccessUsers()]);
-            } catch (error) {
-                console.error('Error loading admin access section:', error);
-            }
-        }
-
-        async function loadAccessUsers() {
-            const list = document.getElementById('accessUsersList');
-
-            const escapeHtml = (value) => String(value || '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-
-            try {
-                const response = await fetch('/api/access-users', {
-                    credentials: 'include'
-                });
-                const result = await response.json();
-
-                if (!response.ok) {
-                    list.innerHTML = '<li>Unable to load access users.</li>';
-                    return;
-                }
-
-                const users = Array.isArray(result.users) ? result.users : [];
-                if (!users.length) {
-                    list.innerHTML = '<li>No users configured.</li>';
-                    return;
-                }
-
-                list.innerHTML = users.map((user) => {
-                    const safeName = escapeHtml(user.name || 'User');
-                    const safeCode = escapeHtml(user.code || '----');
-                    const safeRole = escapeHtml(user.role || 'viewer');
-                    const safeDisplayRole = escapeHtml(formatRoleLabel(user.role));
-                    const roleClass = getRoleClass(user.role);
-                    return `<li><div class="admin-user-row"><div class="admin-user-info"><div class="admin-user-meta"><span>${safeName}</span><span class="role-pill ${roleClass}">${safeDisplayRole}</span></div><div class="admin-user-code"><strong>Access Code:</strong><span class="access-code-value" data-hidden="true">••••</span><button class="mini-btn" data-action="toggle-code" data-user-id="${user.id}" data-user-code="${safeCode}">Show</button></div></div><div class="admin-user-actions"><button class="mini-btn" data-action="edit" data-user-id="${user.id}" data-user-name="${safeName}" data-user-role="${safeRole}">Edit</button><button class="mini-btn" data-action="delete" data-user-id="${user.id}" data-user-name="${safeName}">Remove</button></div></div></li>`;
-                }).join('');
-            } catch (error) {
-                console.error('Error loading access users:', error);
-                list.innerHTML = '<li>Unable to load access users.</li>';
-            }
-        }
-
-        async function createAccessUser() {
-            const name = document.getElementById('adminUserName').value.trim();
-            const code = document.getElementById('adminUserCode').value.trim();
-            const role = document.getElementById('adminUserRole').value;
-
-            if (!name) {
-                showError('Please enter a user name.');
-                return;
-            }
-
-            if (!/^\d{4}$/.test(code)) {
-                showError('User code must be 4 digits.');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/access-users', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({ name, code, role })
-                });
-
-                const result = await response.json();
-                if (response.status === 409) {
-                    showCodeTakenPopup('adminUserCode');
-                    return;
-                }
-                if (!response.ok) {
-                    showError(result.error || 'Unable to add user.');
-                    return;
-                }
-
-                document.getElementById('adminUserName').value = '';
-                document.getElementById('adminUserCode').value = '';
-                document.getElementById('adminUserRole').value = 'viewer';
-
-                showSuccess('User added successfully.');
-                await loadAccessUsers();
-            } catch (error) {
-                console.error('Error creating access user:', error);
-                showError('Network error. Please try again.');
-            }
-        }
-
-        function openEditAccessUserModal(userId, currentName, currentRole) {
-            editingAccessUserId = userId;
-            document.getElementById('editAdminUserName').value = currentName || '';
-            document.getElementById('editAdminUserRole').value = currentRole || 'viewer';
-            document.getElementById('editAdminUserCode').value = '';
-            const modal = document.getElementById('editAccessUserModal');
-            modal.classList.add('open');
-            modal.setAttribute('aria-hidden', 'false');
-            document.getElementById('editAdminUserName').focus();
-        }
-
-        function closeEditAccessUserModal() {
-            editingAccessUserId = null;
-            const modal = document.getElementById('editAccessUserModal');
-            modal.classList.remove('open');
-            modal.setAttribute('aria-hidden', 'true');
-            document.getElementById('editAdminUserName').value = '';
-            document.getElementById('editAdminUserRole').value = 'viewer';
-            document.getElementById('editAdminUserCode').value = '';
-        }
-
-        function editAccessUser(userId, currentName, currentRole) {
-            openEditAccessUserModal(userId, currentName, currentRole);
-        }
-
-        async function submitEditAccessUser() {
-            if (!editingAccessUserId) {
-                return;
-            }
-
-            const trimmedName = document.getElementById('editAdminUserName').value.trim();
-            const normalizedRole = document.getElementById('editAdminUserRole').value;
-            const newCode = document.getElementById('editAdminUserCode').value.trim();
-
-            const payload = {
-                name: trimmedName,
-                role: normalizedRole
-            };
-
-            if (!trimmedName) {
-                showError('Name cannot be empty.');
-                return;
-            }
-
-            if (newCode.trim()) {
-                if (!/^\d{4}$/.test(newCode.trim())) {
-                    showError('Code must be 4 digits.');
-                    return;
-                }
-                payload.code = newCode.trim();
-            }
-
-            try {
-                const response = await fetch(`/api/access-users/${encodeURIComponent(editingAccessUserId)}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                if (response.status === 409) {
-                    showCodeTakenPopup('editAdminUserCode');
-                    return;
-                }
-                if (!response.ok) {
-                    showError(result.error || 'Unable to update user.');
-                    return;
-                }
-
-                closeEditAccessUserModal();
-                showSuccess('User updated successfully.');
-                await loadAccessUsers();
-            } catch (error) {
-                console.error('Error updating access user:', error);
-                showError('Network error. Please try again.');
-            }
-        }
-
-        async function deleteAccessUser(userId, userName) {
-                if (pendingDeleteUserId === userId) {
-                    pendingDeleteUserId = null;
-                    clearPendingDeleteTimer();
-                } else {
-                    pendingDeleteUserId = userId;
-                    showPendingDeleteToast(userName);
-                    return;
-                }
-
-                try {
-                const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
-                    method: 'DELETE',
-                    credentials: 'include'
-                });
-
-                const result = await response.json();
-                if (!response.ok) {
-                    showError(result.error || 'Unable to remove user.');
-                    return;
-                }
-
-                showSuccess('User removed successfully.');
-                await loadAccessUsers();
-            } catch (error) {
-                console.error('Error removing access user:', error);
-                showError('Network error. Please try again.');
-            }
-        }
-
-            let pendingDeleteUserId = null;
-            let pendingDeleteTimer = null;
-
-            function clearPendingDeleteTimer() {
-                if (pendingDeleteTimer) {
-                    clearTimeout(pendingDeleteTimer);
-                    pendingDeleteTimer = null;
-                }
-            }
-
-            function showPendingDeleteToast(userName) {
-                clearPendingDeleteTimer();
-                showError(`Tap "Remove" again to confirm deleting ${userName}.`);
-                pendingDeleteTimer = setTimeout(() => {
-                    pendingDeleteUserId = null;
-                    pendingDeleteTimer = null;
-                    const errorEl = document.getElementById('errorMessage');
-                    if (errorEl && errorEl.textContent.startsWith('Tap "Remove"')) {
-                        errorEl.style.display = 'none';
-                    }
-                }, 4000);
-            }
-
-        function getDefaultSettings() {
-            return {
-                twoFactor: false
-            };
-        }
-
-        function showCodeTakenPopup(inputId) {
-            if (inputId) {
-                const input = document.getElementById(inputId);
-                if (input) {
-                    input.style.borderColor = '#dc2626';
-                    input.focus();
-                    input.addEventListener('input', function clearHighlight() {
-                        input.style.borderColor = '';
-                    }, { once: true });
-                }
-            }
-            const modal = document.getElementById('codeInUseModal');
-            modal.classList.add('open');
-            modal.setAttribute('aria-hidden', 'false');
-        }
-
-        function closeCodeInUseModal() {
-            const modal = document.getElementById('codeInUseModal');
-            modal.classList.remove('open');
-            modal.setAttribute('aria-hidden', 'true');
-        }
-
-        function showSuccess(message) {
-            const successEl = document.getElementById('successMessage');
-            successEl.textContent = message;
-            successEl.style.display = 'block';
-            document.getElementById('errorMessage').style.display = 'none';
-
-            setTimeout(() => {
-                successEl.style.display = 'none';
-            }, 5000);
-        }
-
-        function showError(message) {
-            const errorEl = document.getElementById('errorMessage');
-            errorEl.textContent = message;
-            errorEl.style.display = 'block';
-            document.getElementById('successMessage').style.display = 'none';
-
-            setTimeout(() => {
-                errorEl.style.display = 'none';
-            }, 5000);
-        }
-    </script>
+      } catch {
+        window.location.href = '/';
+        return;
+      }
+
+      loadSettings();
+      document.getElementById('saveCodeBtn').addEventListener('click', changeAccessCode);
+      document.getElementById('saveSettings').addEventListener('click', saveSettings);
+      document.getElementById('resetSettings').addEventListener('click', resetSettings);
+    });
+  </script>
+  <script src="/chat-widget.js"></script>
 </body>
 </html>

@@ -19,23 +19,55 @@
         <div id="message" role="status" class="message" aria-live="polite"></div>
 
         <button type="submit" class="btn">Unlock</button>
+        <button type="button" id="visitorAccessBtn" class="btn btn-secondary">Visitor Access</button>
       </form>
     </section>
   </main>
   <div id="timestamp" class="timestamp"></div>
   <script src="script.js"></script>
   <script>
+    function formatUpdateStamp(value) {
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return null;
+      }
+
+      return parsed.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
     async function loadVersionInfo() {
+      const stampEl = document.getElementById('timestamp');
       try {
         const response = await fetch('/api/version');
-        const data = await response.json();
-        if (data.timestamp) {
-          const date = new Date(data.timestamp);
-          const formatted = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          document.getElementById('timestamp').textContent = `v${data.hash} • ${formatted}`;
+        if (!response.ok) {
+          throw new Error(`Version API returned ${response.status}`);
         }
+
+        const data = await response.json();
+        const formatted = formatUpdateStamp(data?.timestamp) || formatUpdateStamp(document.lastModified);
+        const hash = String(data?.hash || 'local').slice(0, 12);
+
+        if (formatted) {
+          stampEl.textContent = `Latest update: ${formatted} • v${hash}`;
+          return;
+        }
+
+        stampEl.textContent = `Latest update: v${hash}`;
       } catch (error) {
         console.error('Failed to load version info:', error);
+
+        const fallback = formatUpdateStamp(document.lastModified);
+        if (fallback) {
+          stampEl.textContent = `Latest update: ${fallback}`;
+        } else {
+          stampEl.textContent = 'Latest update unavailable';
+        }
       }
     }
     loadVersionInfo();
