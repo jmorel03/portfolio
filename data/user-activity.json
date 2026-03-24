@@ -1,0 +1,42 @@
+[
+  {
+    "timestamp": "2026-03-24T00:51:00.163Z",
+    "action": "chat",
+    "target": "Chat with Chat Smoke User",
+    "details": "Sent a direct message",
+    "userId": "admin",
+    "userName": "Admin",
+    "role": "admin",
+    "ip": "::1"
+  },
+  {
+    "timestamp": "2026-03-24T00:51:00.091Z",
+    "action": "chat",
+    "target": "All chat",
+    "details": "Sent a message to all chat",
+    "userId": "admin",
+    "userName": "Admin",
+    "role": "admin",
+    "ip": "::1"
+  },
+  {
+    "timestamp": "2026-03-24T00:50:32.672Z",
+    "action": "chat",
+    "target": "Chat with Chat Smoke User",
+    "details": "Sent a direct message",
+    "userId": "admin",
+    "userName": "Admin",
+    "role": "admin",
+    "ip": "::1"
+  },
+  {
+    "timestamp": "2026-03-24T00:50:32.498Z",
+    "action": "chat",
+    "target": "All chat",
+    "details": "Sent a message to all chat",
+    "userId": "admin",
+    "userName": "Admin",
+    "role": "admin",
+    "ip": "::1"
+  }
+]

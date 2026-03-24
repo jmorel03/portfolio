@@ -1,0 +1,40 @@
+{
+  "messages": [
+    {
+      "id": "9ca1d243-7e11-4cd9-bfd2-f681c56c8d85",
+      "senderUserId": "admin",
+      "senderUserName": "Admin",
+      "senderRole": "admin",
+      "targetUserId": "__all__",
+      "text": "smoke-all-20260323205032",
+      "createdAt": "2026-03-24T00:50:32.497Z"
+    },
+    {
+      "id": "8d193418-d76e-4a11-af0e-78a5b71a89a4",
+      "senderUserId": "admin",
+      "senderUserName": "Admin",
+      "senderRole": "admin",
+      "targetUserId": "777848fc-e130-4dbb-b069-06bad9e71a34",
+      "text": "smoke-dm-20260323205032",
+      "createdAt": "2026-03-24T00:50:32.671Z"
+    },
+    {
+      "id": "8e7b315b-46df-4e6c-9d11-b6606c224932",
+      "senderUserId": "admin",
+      "senderUserName": "Admin",
+      "senderRole": "admin",
+      "targetUserId": "__all__",
+      "text": "smoke-all-20260323205100",
+      "createdAt": "2026-03-24T00:51:00.090Z"
+    },
+    {
+      "id": "8b64d2a1-2e0d-47be-b209-d68c966bc11a",
+      "senderUserId": "admin",
+      "senderUserName": "Admin",
+      "senderRole": "admin",
+      "targetUserId": "f1622c74-6538-4340-909e-88e432a18a84",
+      "text": "smoke-dm-20260323205100",
+      "createdAt": "2026-03-24T00:51:00.162Z"
+    }
+  ]
+}

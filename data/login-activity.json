@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2026-03-24T00:51:00.227Z",
+    "ip": "::1",
+    "userAgent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.7920",
+    "userId": "f1622c74-6538-4340-909e-88e432a18a84",
+    "userName": "Chat Smoke User",
+    "userCode": "6427",
+    "role": "viewer"
+  },
+  {
+    "timestamp": "2026-03-24T00:50:59.966Z",
+    "ip": "::1",
+    "userAgent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.7920",
+    "userId": "admin",
+    "userName": "Admin",
+    "userCode": "3212",
+    "role": "admin"
+  },
+  {
+    "timestamp": "2026-03-24T00:50:32.828Z",
+    "ip": "::1",
+    "userAgent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.7920",
+    "userId": "777848fc-e130-4dbb-b069-06bad9e71a34",
+    "userName": "Chat Smoke User",
+    "userCode": "6427",
+    "role": "viewer"
+  },
+  {
+    "timestamp": "2026-03-24T00:50:32.231Z",
+    "ip": "::1",
+    "userAgent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.7920",
+    "userId": "admin",
+    "userName": "Admin",
+    "userCode": "3212",
+    "role": "admin"
+  }
+]

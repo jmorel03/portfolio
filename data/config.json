@@ -1,3 +1,12 @@
 {
-  "AUTH_CODE": "3212"
+  "AUTH_CODE": "3212",
+  "DELETE_PASSWORD_HASH": "",
+  "ACCESS_USERS": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "code": "3212",
+      "role": "admin"
+    }
+  ]
 }
