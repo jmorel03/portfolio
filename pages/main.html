@@ -99,7 +99,8 @@
               background: rgba(226, 232, 240, 0.55);
           }
 
-        #accountBtn {
+        #accountBtn,
+        #threadBtn {
             padding: 12px 20px;
             border: none;
             border-radius: 25px;
@@ -112,7 +113,8 @@
             transition: all 0.3s ease;
         }
 
-        #accountBtn:hover {
+          #accountBtn:hover,
+          #threadBtn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
         }
@@ -427,7 +429,8 @@
             padding: 25px 30px;
         }
 
-        .modal-body input {
+        .modal-body input,
+        .modal-body select {
             display: block;
             margin: 12px 0 20px;
             padding: 14px 18px;
@@ -1101,11 +1104,11 @@
         <span id="userIdentityRole" class="user-identity-role"></span>
       </div>
 
-    <header style="position: fixed; top: 10px; right: 10px;">
-        <button id="accountBtn" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer;">Settings</button>
+    <header style="position: fixed; top: 10px; right: 10px; display: flex; align-items: center; gap: 8px;">
+      <button id="threadBtn">Thread / Blog</button>
+      <button id="accountBtn">Settings</button>
         <div id="accountMenu" class="account-menu">
           <button id="settingsBtn">Settings</button>
-          <button id="threadBtn">Thread / Blog</button>
           <button id="adminPanelBtn" style="display:none;">Admin Panel</button>
             <button id="logoutBtn">Logout</button>
         </div>
@@ -1135,6 +1138,7 @@
     <div id="fileContextMenu" style="display:none"></div>
     <button id="deleteFolder" style="display:none"></button>
     <button id="moveFileOption" style="display:none"></button>
+    <button id="setFilePermissions" style="display:none"></button>
     <button id="deleteFile" style="display:none"></button>
 
     <!-- Action Panel -->
@@ -1256,6 +1260,38 @@
             <div class="modal-footer">
               <button id="cancelRename">Cancel</button>
               <button id="confirmRename">Rename</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="filePermissionsModal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>File Permissions</h3>
+              <button id="closeFilePermissionsModal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <p style="font-size:0.88rem;color:#64748b;margin:0 0 12px;">Choose who can open this file.</p>
+              <select id="permissionAccessMode">
+                <option value="public">Public (everyone)</option>
+                <option value="role">Role based</option>
+                <option value="user">Specific user</option>
+              </select>
+              <div id="permissionRoleWrap" style="display:none;">
+                <select id="permissionRole">
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div id="permissionUserWrap" style="display:none;">
+                <select id="permissionUser"></select>
+              </div>
+              <p class="form-error" id="filePermissionsError"></p>
+            </div>
+            <div class="modal-footer">
+              <button id="cancelFilePermissions">Cancel</button>
+              <button id="saveFilePermissions">Save Permissions</button>
             </div>
           </div>
         </div>
@@ -1490,6 +1526,7 @@
       const deleteFolderBtn = document.getElementById('deleteFolder');
       const fileContextMenu = document.getElementById('fileContextMenu');
       const moveFileOptionBtn = document.getElementById('moveFileOption');
+      const setFilePermissionsBtn = document.getElementById('setFilePermissions');
       const deleteFileBtn = document.getElementById('deleteFile');
       const folderView = document.getElementById('folderView');
       const folderViewHeader = document.getElementById('folderViewHeader');
@@ -1523,6 +1560,15 @@
       const cancelRenameBtn = document.getElementById('cancelRename');
       const confirmRenameBtn = document.getElementById('confirmRename');
       const renameModalError = document.getElementById('renameModalError');
+      const filePermissionsModal = document.getElementById('filePermissionsModal');
+      const closeFilePermissionsModalBtn = document.getElementById('closeFilePermissionsModal');
+      const cancelFilePermissionsBtn = document.getElementById('cancelFilePermissions');
+      const saveFilePermissionsBtn = document.getElementById('saveFilePermissions');
+      const permissionAccessModeSelect = document.getElementById('permissionAccessMode');
+      const permissionRoleWrap = document.getElementById('permissionRoleWrap');
+      const permissionRoleSelect = document.getElementById('permissionRole');
+      const permissionUserWrap = document.getElementById('permissionUserWrap');
+      const permissionUserSelect = document.getElementById('permissionUser');
       const toast = document.getElementById('toast');
 
       // Drag and drop variables
@@ -1540,6 +1586,7 @@
       let currentFolderIndex = -1;
       let selectedFileIndex = -1;
       let selectedFileContext = null;
+      let selectedPermissionFile = null;
       let draggedFolderIndex = -1;
       let draggedFileIndex = -1;
       let subfolderPath = []; // stack of file-array indices for nested subfolder navigation
@@ -1565,6 +1612,130 @@
         renameModalError.textContent = '';
         renameModalError.style.display = 'none';
         renamingContext = null;
+      }
+
+      function updatePermissionFieldVisibility() {
+        const mode = String(permissionAccessModeSelect.value || 'public').toLowerCase();
+        permissionRoleWrap.style.display = mode === 'role' ? 'block' : 'none';
+        permissionUserWrap.style.display = mode === 'user' ? 'block' : 'none';
+      }
+
+      function closeFilePermissionsModal() {
+        filePermissionsModal.style.display = 'none';
+        selectedPermissionFile = null;
+        clearFormError('filePermissionsError');
+      }
+
+      function extractFileIdFromContent(content) {
+        if (typeof content !== 'string') return null;
+        if (!content.startsWith('/api/files/')) return null;
+        const encoded = content.replace('/api/files/', '');
+        if (!encoded) return null;
+        try {
+          return decodeURIComponent(encoded);
+        } catch {
+          return encoded;
+        }
+      }
+
+      async function loadPermissionUsers() {
+        const response = await fetch('/api/access-users', { credentials: 'include' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result?.error || 'Unable to load users');
+        }
+
+        const users = Array.isArray(result?.users) ? result.users : [];
+        permissionUserSelect.innerHTML = users
+          .map((user) => `<option value="${escapeHtml(String(user.id || ''))}">${escapeHtml(String(user.name || 'User'))} (${escapeHtml(String(user.role || 'viewer'))})</option>`)
+          .join('');
+      }
+
+      async function openFilePermissionsModal(file) {
+        if (String(currentUserRole || '').toLowerCase() !== 'admin') {
+          showToast('Only admins can update file permissions.');
+          return;
+        }
+
+        const fileId = extractFileIdFromContent(file?.content);
+        if (!fileId) {
+          showToast('Permissions are only available for uploaded files.');
+          return;
+        }
+
+        selectedPermissionFile = { fileId, name: file?.name || 'File' };
+        filePermissionsModal.style.display = 'block';
+        clearFormError('filePermissionsError');
+
+        try {
+          await loadPermissionUsers();
+
+          const response = await fetch(`/api/file-permissions/${encodeURIComponent(fileId)}`, {
+            credentials: 'include'
+          });
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(result?.error || 'Unable to load file permissions');
+          }
+
+          permissionAccessModeSelect.value = result?.accessMode || 'public';
+          permissionRoleSelect.value = result?.requiredRole || 'viewer';
+          if (result?.allowedUserId) {
+            permissionUserSelect.value = String(result.allowedUserId);
+          }
+          updatePermissionFieldVisibility();
+        } catch (error) {
+          console.error('Error opening file permissions modal:', error);
+          showFormError('filePermissionsError', error?.message || 'Unable to load file permissions.');
+        }
+      }
+
+      async function saveFilePermissions() {
+        if (!selectedPermissionFile?.fileId) {
+          showFormError('filePermissionsError', 'No file selected.');
+          return;
+        }
+
+        const accessMode = String(permissionAccessModeSelect.value || 'public').toLowerCase();
+        const payload = { accessMode };
+
+        if (accessMode === 'role') {
+          payload.requiredRole = String(permissionRoleSelect.value || '').toLowerCase();
+          if (!payload.requiredRole) {
+            showFormError('filePermissionsError', 'Please select a role.');
+            return;
+          }
+        }
+
+        if (accessMode === 'user') {
+          payload.allowedUserId = String(permissionUserSelect.value || '').trim();
+          if (!payload.allowedUserId) {
+            showFormError('filePermissionsError', 'Please select a user.');
+            return;
+          }
+        }
+
+        try {
+          const response = await fetch(`/api/file-permissions/${encodeURIComponent(selectedPermissionFile.fileId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            showFormError('filePermissionsError', result?.error || 'Failed to save permissions.');
+            return;
+          }
+
+          closeFilePermissionsModal();
+          showToast('File permissions updated.', 'success');
+        } catch (error) {
+          console.error('Error saving file permissions:', error);
+          showFormError('filePermissionsError', 'Network error while saving permissions.');
+        }
       }
 
       async function submitRename() {
@@ -2514,15 +2685,22 @@
               const fileIcon = folder.type === 'Photos' ? '🖼️'
                 : folder.type === 'Videos' ? '🎥'
                 : '📄';
+              const buttons = [
+                { label: 'Edit Name', icon: '✏️', cls: 'apb-move', onClick: () => openRenameModal('file', file.name, { folderIndex: currentFolderIndex, path: [...subfolderPath], itemIndex: index }) },
+                { label: 'Move', icon: '📦', cls: 'apb-move', onClick: () => moveFileOptionBtn.click() }
+              ];
+
+              if (String(currentUserRole || '').toLowerCase() === 'admin' && extractFileIdFromContent(file?.content)) {
+                buttons.push({ label: 'Permissions', icon: '🔒', cls: 'apb-move', onClick: () => setFilePermissionsBtn.click() });
+              }
+
+              buttons.push({ label: 'Delete', icon: '🗑️', cls: 'apb-delete', onClick: () => deleteFileBtn.click() });
+
               openActionPanel({
                 icon: fileIcon,
                 title: file.name,
                 subtitle: folder.type,
-                buttons: [
-                  { label: 'Edit Name', icon: '✏️', cls: 'apb-move', onClick: () => openRenameModal('file', file.name, { folderIndex: currentFolderIndex, path: [...subfolderPath], itemIndex: index }) },
-                  { label: 'Move', icon: '📦', cls: 'apb-move', onClick: () => moveFileOptionBtn.click() },
-                  { label: 'Delete', icon: '🗑️', cls: 'apb-delete', onClick: () => deleteFileBtn.click() }
-                ]
+                buttons
               });
             });
           }
@@ -2819,6 +2997,33 @@
         openMoveFileModal();
       });
 
+      setFilePermissionsBtn.addEventListener('click', async () => {
+        if (!selectedFileContext) {
+          showToast('No file selected.');
+          return;
+        }
+
+        const items = getFilesArrayByPath(selectedFileContext.folderIndex, selectedFileContext.path);
+        const file = items?.[selectedFileContext.itemIndex] || null;
+        await openFilePermissionsModal(file);
+      });
+
+      permissionAccessModeSelect.addEventListener('change', () => {
+        updatePermissionFieldVisibility();
+      });
+
+      closeFilePermissionsModalBtn.addEventListener('click', () => {
+        closeFilePermissionsModal();
+      });
+
+      cancelFilePermissionsBtn.addEventListener('click', () => {
+        closeFilePermissionsModal();
+      });
+
+      saveFilePermissionsBtn.addEventListener('click', () => {
+        saveFilePermissions();
+      });
+
       closeMoveFileModalBtn.addEventListener('click', () => {
         hideMoveFileModal();
       });
@@ -3102,6 +3307,12 @@
       moveFileModal.addEventListener('click', (e) => {
         if (e.target === moveFileModal) {
           hideMoveFileModal();
+        }
+      });
+
+      filePermissionsModal.addEventListener('click', (e) => {
+        if (e.target === filePermissionsModal) {
+          closeFilePermissionsModal();
         }
       });
     </script>

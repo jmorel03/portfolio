@@ -179,6 +179,19 @@ function normalizeRequiredRole(requiredRole) {
   return ROLE_LEVEL[value] ? value : null;
 }
 
+function normalizeAllowedUserIds(userIds) {
+  if (!Array.isArray(userIds)) {
+    return [];
+  }
+
+  const validIds = new Set(ACCESS_USERS.map((user) => String(user.id)));
+  const normalized = userIds
+    .map((userId) => String(userId || '').trim())
+    .filter((userId) => userId && validIds.has(userId));
+
+  return [...new Set(normalized)].slice(0, 20);
+}
+
 function getUploadMetaPath(filePath) {
   return `${filePath}.meta.json`;
 }
@@ -350,21 +363,23 @@ function normalizeChatMessages(messages) {
     .slice(-300)
     .map((message) => {
       const id = String(message?.id || '').trim();
-      const userId = String(message?.userId || '').trim().slice(0, 120);
-      const userName = String(message?.userName || '').trim().slice(0, 80);
-      const role = normalizeRole(message?.role);
+      const senderUserId = String(message?.senderUserId || '').trim().slice(0, 120);
+      const senderUserName = String(message?.senderUserName || '').trim().slice(0, 80);
+      const senderRole = normalizeRole(message?.senderRole);
+      const targetUserId = String(message?.targetUserId || '').trim().slice(0, 120);
       const text = String(message?.text || '').trim().slice(0, 800);
       const createdAt = String(message?.createdAt || '').trim();
 
-      if (!id || !userName || !text || !createdAt) {
+      if (!id || !senderUserName || !targetUserId || !text || !createdAt) {
         return null;
       }
 
       return {
         id,
-        userId: userId || 'unknown',
-        userName,
-        role,
+        senderUserId: senderUserId || 'unknown',
+        senderUserName,
+        senderRole,
+        targetUserId,
         text,
         createdAt
       };
@@ -385,6 +400,24 @@ async function readChatMessages() {
 async function writeChatMessages(messages) {
   await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
   await fs.writeFile(CHAT_MESSAGES_FILE, JSON.stringify({ messages: normalizeChatMessages(messages) }, null, 2));
+}
+
+function listChatTargets(currentUserId) {
+  return ACCESS_USERS
+    .filter((user) => String(user.id) !== String(currentUserId || ''))
+    .map((user) => ({
+      id: String(user.id),
+      name: String(user.name || 'User').slice(0, 80),
+      role: normalizeRole(user.role)
+    }));
+}
+
+function getChatThread(messages, userA, userB) {
+  return normalizeChatMessages(messages).filter((message) => {
+    const sender = String(message.senderUserId || '');
+    const target = String(message.targetUserId || '');
+    return (sender === userA && target === userB) || (sender === userB && target === userA);
+  });
 }
 
 ACCESS_USERS = normalizeAccessUsers(null, AUTH_CODE);
@@ -775,10 +808,31 @@ app.post('/api/thread-posts', requireRole('editor'), async (req, res) => {
   }
 });
 
+app.get('/api/chat-users', requireAuth, async (req, res) => {
+  try {
+    const users = listChatTargets(req.session?.userId);
+    return res.json({ ok: true, users });
+  } catch (error) {
+    console.error('Error reading chat users:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to load chat users' });
+  }
+});
+
 app.get('/api/chat-messages', requireAuth, async (req, res) => {
   try {
+    const targetUserId = String(req.query?.userId || '').trim();
+    if (!targetUserId) {
+      return res.status(400).json({ ok: false, error: 'Target user is required' });
+    }
+
+    const targetUserExists = ACCESS_USERS.some((user) => String(user.id) === targetUserId);
+    if (!targetUserExists) {
+      return res.status(404).json({ ok: false, error: 'Target user not found' });
+    }
+
     const messages = await readChatMessages();
-    return res.json({ ok: true, messages });
+    const thread = getChatThread(messages, String(req.session?.userId || ''), targetUserId);
+    return res.json({ ok: true, messages: thread });
   } catch (error) {
     console.error('Error reading chat messages:', error);
     return res.status(500).json({ ok: false, error: 'Failed to load chat messages' });
@@ -787,7 +841,22 @@ app.get('/api/chat-messages', requireAuth, async (req, res) => {
 
 app.post('/api/chat-messages', requireAuth, async (req, res) => {
   try {
+    const targetUserId = String(req.body?.targetUserId || '').trim();
     const text = String(req.body?.text || '').trim().slice(0, 800);
+
+    if (!targetUserId) {
+      return res.status(400).json({ ok: false, error: 'Target user is required' });
+    }
+
+    if (targetUserId === String(req.session?.userId || '')) {
+      return res.status(400).json({ ok: false, error: 'Cannot message yourself' });
+    }
+
+    const targetUser = ACCESS_USERS.find((user) => String(user.id) === targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ ok: false, error: 'Target user not found' });
+    }
+
     if (!text) {
       return res.status(400).json({ ok: false, error: 'Message text is required' });
     }
@@ -795,23 +864,25 @@ app.post('/api/chat-messages', requireAuth, async (req, res) => {
     const messages = await readChatMessages();
     messages.push({
       id: generateUserId(),
-      userId: String(req.session?.userId || 'unknown'),
-      userName: String(req.session?.name || 'Unknown user').slice(0, 80),
-      role: normalizeRole(req.session?.role),
+      senderUserId: String(req.session?.userId || 'unknown'),
+      senderUserName: String(req.session?.name || 'Unknown user').slice(0, 80),
+      senderRole: normalizeRole(req.session?.role),
+      targetUserId,
       text,
       createdAt: new Date().toISOString()
     });
 
     const normalized = normalizeChatMessages(messages);
     await writeChatMessages(normalized);
+    const thread = getChatThread(normalized, String(req.session?.userId || ''), targetUserId);
 
     await appendUserActivity(req, {
       action: 'chat',
-      target: 'Chat',
-      details: 'Sent a chat message'
+      target: `Chat with ${String(targetUser.name || 'User').slice(0, 80)}`,
+      details: 'Sent a direct message'
     });
 
-    return res.json({ ok: true, messages: normalized });
+    return res.json({ ok: true, messages: thread });
   } catch (error) {
     console.error('Error creating chat message:', error);
     return res.status(500).json({ ok: false, error: 'Failed to send chat message' });
@@ -894,7 +965,8 @@ app.post('/api/upload', requireRole('editor'), upload.single('file'), async (req
     await writeUploadMeta(req.file.path, {
       originalName: req.file.originalname,
       contentType: req.file.mimetype,
-      requiredRole
+      requiredRole,
+      allowedUserIds: []
     });
 
     await appendUserActivity(req, {
@@ -909,7 +981,8 @@ app.post('/api/upload', requireRole('editor'), upload.single('file'), async (req
       originalName: req.file.originalname,
       size: req.file.size,
       url: `/api/files/${req.file.filename}`,
-      requiredRole
+      requiredRole,
+      allowedUserIds: []
     };
     
     res.json(fileInfo);
@@ -926,6 +999,19 @@ app.get('/api/files/:filename', async (req, res) => {
 
     const meta = await readUploadMeta(filePath);
     const requiredRole = normalizeRequiredRole(meta.requiredRole);
+    const allowedUserIds = normalizeAllowedUserIds(meta.allowedUserIds);
+
+    if (allowedUserIds.length > 0) {
+      if (!req.session?.authenticated) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+      }
+
+      const currentUserId = String(req.session?.userId || '');
+      if (!allowedUserIds.includes(currentUserId)) {
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+      }
+    }
+
     if (requiredRole) {
       if (!req.session?.authenticated) {
         return res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -940,6 +1026,83 @@ app.get('/api/files/:filename', async (req, res) => {
   } catch (error) {
     console.error('Error serving file:', error);
     res.status(404).json({ error: 'File not found' });
+  }
+});
+
+app.get('/api/file-permissions/:fileId', requireRole('admin'), async (req, res) => {
+  try {
+    const fileId = decodeURIComponent(String(req.params.fileId || '').trim());
+    if (!fileId) {
+      return res.status(400).json({ ok: false, error: 'File ID is required' });
+    }
+
+    const filePath = path.join(__dirname, 'data', 'uploads', fileId);
+    const meta = await readUploadMeta(filePath);
+    const requiredRole = normalizeRequiredRole(meta.requiredRole);
+    const allowedUserIds = normalizeAllowedUserIds(meta.allowedUserIds);
+    const allowedUserId = allowedUserIds.length > 0 ? allowedUserIds[0] : '';
+    const accessMode = allowedUserId ? 'user' : (requiredRole ? 'role' : 'public');
+
+    return res.json({
+      ok: true,
+      accessMode,
+      requiredRole: requiredRole || '',
+      allowedUserId
+    });
+  } catch (error) {
+    console.error('Error reading file permissions:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to load file permissions' });
+  }
+});
+
+app.put('/api/file-permissions/:fileId', requireRole('admin'), async (req, res) => {
+  try {
+    const fileId = decodeURIComponent(String(req.params.fileId || '').trim());
+    if (!fileId) {
+      return res.status(400).json({ ok: false, error: 'File ID is required' });
+    }
+
+    const accessMode = String(req.body?.accessMode || 'public').trim().toLowerCase();
+    const normalizedRole = normalizeRequiredRole(req.body?.requiredRole);
+    const requestedUserId = String(req.body?.allowedUserId || '').trim();
+    const validUserIds = new Set(ACCESS_USERS.map((user) => String(user.id)));
+
+    let requiredRole = null;
+    let allowedUserIds = [];
+
+    if (accessMode === 'role') {
+      if (!normalizedRole) {
+        return res.status(400).json({ ok: false, error: 'Valid role is required' });
+      }
+      requiredRole = normalizedRole;
+    } else if (accessMode === 'user') {
+      if (!requestedUserId || !validUserIds.has(requestedUserId)) {
+        return res.status(400).json({ ok: false, error: 'Valid user is required' });
+      }
+      allowedUserIds = [requestedUserId];
+    } else if (accessMode !== 'public') {
+      return res.status(400).json({ ok: false, error: 'Invalid access mode' });
+    }
+
+    const filePath = path.join(__dirname, 'data', 'uploads', fileId);
+    const currentMeta = await readUploadMeta(filePath);
+    const nextMeta = {
+      ...currentMeta,
+      requiredRole,
+      allowedUserIds
+    };
+
+    await writeUploadMeta(filePath, nextMeta);
+
+    return res.json({
+      ok: true,
+      accessMode,
+      requiredRole: requiredRole || '',
+      allowedUserId: allowedUserIds[0] || ''
+    });
+  } catch (error) {
+    console.error('Error updating file permissions:', error);
+    return res.status(500).json({ ok: false, error: 'Failed to update file permissions' });
   }
 });
 

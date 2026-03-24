@@ -82,6 +82,19 @@ function normalizeRequiredRole(requiredRole) {
   return ROLE_LEVEL[value] ? value : null;
 }
 
+function normalizeAllowedUserIds(userIds, users) {
+  if (!Array.isArray(userIds)) {
+    return [];
+  }
+
+  const validIds = new Set((Array.isArray(users) ? users : []).map((user) => String(user.id)));
+  const normalized = userIds
+    .map((userId) => String(userId || '').trim())
+    .filter((userId) => userId && validIds.has(userId));
+
+  return [...new Set(normalized)].slice(0, 20);
+}
+
 function normalizeAccessUsers(users, fallbackCode) {
   if (!Array.isArray(users)) {
     return [{ id: 'admin', name: 'Admin', code: fallbackCode, role: 'admin' }];
@@ -289,21 +302,23 @@ function normalizeChatMessages(messages) {
     .slice(-300)
     .map((message) => {
       const id = String(message?.id || '').trim();
-      const userId = String(message?.userId || '').trim().slice(0, 120);
-      const userName = String(message?.userName || '').trim().slice(0, 80);
-      const role = normalizeRole(message?.role);
+      const senderUserId = String(message?.senderUserId || '').trim().slice(0, 120);
+      const senderUserName = String(message?.senderUserName || '').trim().slice(0, 80);
+      const senderRole = normalizeRole(message?.senderRole);
+      const targetUserId = String(message?.targetUserId || '').trim().slice(0, 120);
       const text = String(message?.text || '').trim().slice(0, 800);
       const createdAt = String(message?.createdAt || '').trim();
 
-      if (!id || !userName || !text || !createdAt) {
+      if (!id || !senderUserName || !targetUserId || !text || !createdAt) {
         return null;
       }
 
       return {
         id,
-        userId: userId || 'unknown',
-        userName,
-        role,
+        senderUserId: senderUserId || 'unknown',
+        senderUserName,
+        senderRole,
+        targetUserId,
         text,
         createdAt
       };
@@ -337,6 +352,24 @@ async function setChatMessages(env, messages) {
   const normalized = normalizeChatMessages(messages);
   await env.PORTFOLIO_KV.put(CHAT_MESSAGES_KEY, JSON.stringify({ messages: normalized }));
   return normalized;
+}
+
+function listChatTargets(users, currentUserId) {
+  return (Array.isArray(users) ? users : [])
+    .filter((user) => String(user.id) !== String(currentUserId || ''))
+    .map((user) => ({
+      id: String(user.id),
+      name: String(user.name || 'User').slice(0, 80),
+      role: normalizeRole(user.role)
+    }));
+}
+
+function getChatThread(messages, userA, userB) {
+  return normalizeChatMessages(messages).filter((message) => {
+    const sender = String(message.senderUserId || '');
+    const target = String(message.targetUserId || '');
+    return (sender === userA && target === userB) || (sender === userB && target === userA);
+  });
 }
 
 async function hashText(value) {
@@ -833,14 +866,44 @@ export default {
       }
     }
 
+    if (path === '/api/chat-users' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      const users = await getAccessUsers(env);
+      return new Response(JSON.stringify({ ok: true, users: listChatTargets(users, session.uid) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (path === '/api/chat-messages' && request.method === 'GET') {
       const session = await getSessionFromRequest(request, env);
       if (!session) {
         return unauthorizedResponse();
       }
 
+      const targetUserId = String(url.searchParams.get('userId') || '').trim();
+      if (!targetUserId) {
+        return new Response(JSON.stringify({ ok: false, error: 'Target user is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const users = await getAccessUsers(env);
+      if (!users.some((user) => String(user.id) === targetUserId)) {
+        return new Response(JSON.stringify({ ok: false, error: 'Target user not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       const messages = await getChatMessages(env);
-      return new Response(JSON.stringify({ ok: true, messages }), {
+      const thread = getChatThread(messages, String(session.uid || ''), targetUserId);
+      return new Response(JSON.stringify({ ok: true, messages: thread }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -854,7 +917,31 @@ export default {
 
       try {
         const body = await request.json().catch(() => ({}));
+        const targetUserId = String(body?.targetUserId || '').trim();
         const text = String(body?.text || '').trim().slice(0, 800);
+
+        if (!targetUserId) {
+          return new Response(JSON.stringify({ ok: false, error: 'Target user is required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        if (targetUserId === String(session?.uid || '')) {
+          return new Response(JSON.stringify({ ok: false, error: 'Cannot message yourself' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const users = await getAccessUsers(env);
+        const targetUser = users.find((user) => String(user.id) === targetUserId);
+        if (!targetUser) {
+          return new Response(JSON.stringify({ ok: false, error: 'Target user not found' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
 
         if (!text) {
           return new Response(JSON.stringify({ ok: false, error: 'Message text is required' }), {
@@ -866,21 +953,23 @@ export default {
         const messages = await getChatMessages(env);
         messages.push({
           id: `chat-${crypto.randomUUID()}`,
-          userId: String(session?.uid || 'unknown'),
-          userName: String(session?.name || 'Unknown user').slice(0, 80),
-          role: normalizeRole(session?.role),
+          senderUserId: String(session?.uid || 'unknown'),
+          senderUserName: String(session?.name || 'Unknown user').slice(0, 80),
+          senderRole: normalizeRole(session?.role),
+          targetUserId,
           text,
           createdAt: new Date().toISOString()
         });
 
         const saved = await setChatMessages(env, messages);
+        const thread = getChatThread(saved, String(session.uid || ''), targetUserId);
         await appendUserActivity(env, request, session, {
           action: 'chat',
-          target: 'Chat',
-          details: 'Sent a chat message'
+          target: `Chat with ${String(targetUser.name || 'User').slice(0, 80)}`,
+          details: 'Sent a direct message'
         });
 
-        return new Response(JSON.stringify({ ok: true, messages: saved }), {
+        return new Response(JSON.stringify({ ok: true, messages: thread }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -1340,7 +1429,8 @@ export default {
         await saveFile(env, fileKey, buffer, {
           contentType: mimeType,
           fileName: file.name || 'upload',
-          requiredRole
+          requiredRole,
+          allowedUserIds: []
         });
 
         await appendUserActivity(env, request, session, {
@@ -1353,7 +1443,8 @@ export default {
           ok: true,
           url: `/api/files/${encodeURIComponent(fileKey)}`,
           name: file.name || 'upload',
-          requiredRole
+          requiredRole,
+          allowedUserIds: []
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -1380,7 +1471,21 @@ export default {
       }
 
       const meta = await getFileMeta(env, fileKey);
+      const users = await getAccessUsers(env);
       const requiredRole = normalizeRequiredRole(meta.requiredRole);
+      const allowedUserIds = normalizeAllowedUserIds(meta.allowedUserIds, users);
+
+      if (allowedUserIds.length > 0) {
+        const session = await getSessionFromRequest(request, env);
+        if (!session) {
+          return unauthorizedResponse();
+        }
+
+        if (!allowedUserIds.includes(String(session.uid || ''))) {
+          return forbiddenResponse();
+        }
+      }
+
       if (requiredRole) {
         const session = await getSessionFromRequest(request, env);
         if (!session) {
@@ -1402,6 +1507,119 @@ export default {
       }
 
       return new Response(file.buffer, { status: 200, headers });
+    }
+
+    if (path.startsWith('/api/file-permissions/') && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      const encoded = path.replace('/api/file-permissions/', '');
+      const fileKey = decodeURIComponent(encoded || '');
+      if (!fileKey) {
+        return new Response(JSON.stringify({ ok: false, error: 'File ID is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const users = await getAccessUsers(env);
+      const meta = await getFileMeta(env, fileKey);
+      const requiredRole = normalizeRequiredRole(meta.requiredRole);
+      const allowedUserIds = normalizeAllowedUserIds(meta.allowedUserIds, users);
+      const allowedUserId = allowedUserIds.length > 0 ? allowedUserIds[0] : '';
+      const accessMode = allowedUserId ? 'user' : (requiredRole ? 'role' : 'public');
+
+      return new Response(JSON.stringify({
+        ok: true,
+        accessMode,
+        requiredRole: requiredRole || '',
+        allowedUserId
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path.startsWith('/api/file-permissions/') && request.method === 'PUT') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      const encoded = path.replace('/api/file-permissions/', '');
+      const fileKey = decodeURIComponent(encoded || '');
+      if (!fileKey) {
+        return new Response(JSON.stringify({ ok: false, error: 'File ID is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const body = await request.json().catch(() => ({}));
+      const accessMode = String(body?.accessMode || 'public').trim().toLowerCase();
+      const normalizedRole = normalizeRequiredRole(body?.requiredRole);
+      const requestedUserId = String(body?.allowedUserId || '').trim();
+      const users = await getAccessUsers(env);
+      const validUserIds = new Set(users.map((user) => String(user.id)));
+
+      let requiredRole = null;
+      let allowedUserIds = [];
+
+      if (accessMode === 'role') {
+        if (!normalizedRole) {
+          return new Response(JSON.stringify({ ok: false, error: 'Valid role is required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        requiredRole = normalizedRole;
+      } else if (accessMode === 'user') {
+        if (!requestedUserId || !validUserIds.has(requestedUserId)) {
+          return new Response(JSON.stringify({ ok: false, error: 'Valid user is required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        allowedUserIds = [requestedUserId];
+      } else if (accessMode !== 'public') {
+        return new Response(JSON.stringify({ ok: false, error: 'Invalid access mode' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const currentMeta = await getFileMeta(env, fileKey);
+      const nextMeta = {
+        ...currentMeta,
+        requiredRole,
+        allowedUserIds
+      };
+
+      if (env.PORTFOLIO_R2) {
+        await env.PORTFOLIO_R2.put(`${fileKey}:meta`, JSON.stringify(nextMeta));
+      } else if (env.PORTFOLIO_KV) {
+        await env.PORTFOLIO_KV.put(`${fileKey}:meta`, JSON.stringify(nextMeta));
+      }
+
+      return new Response(JSON.stringify({
+        ok: true,
+        accessMode,
+        requiredRole: requiredRole || '',
+        allowedUserId: allowedUserIds[0] || ''
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     if (path.startsWith('/api/files/') && request.method === 'DELETE') {

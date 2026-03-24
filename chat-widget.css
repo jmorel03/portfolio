@@ -18,6 +18,29 @@
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
 }
 
+.chat-widget-badge {
+  position: absolute;
+  right: -5px;
+  bottom: 50px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.73rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  border: 2px solid #fff;
+}
+
+.chat-widget-badge.hidden {
+  display: none;
+}
+
 .chat-widget-panel {
   position: absolute;
   right: 0;
@@ -61,6 +84,30 @@
   border-radius: 999px;
   font-size: 1rem;
   cursor: pointer;
+}
+
+.chat-widget-target-wrap {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.chat-widget-target-label {
+  display: block;
+  font-size: 0.74rem;
+  color: #64748b;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.chat-widget-target-select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 0.86rem;
+  background: #fff;
+  color: #1f2937;
 }
 
 .chat-widget-messages {

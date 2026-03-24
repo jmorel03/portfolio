@@ -68,6 +68,57 @@
     .success { background: #dcfce7; color: #166534; }
     .error { background: #fee2e2; color: #991b1b; }
     .danger-box { border-left: 4px solid #ef4444; }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2200;
+      padding: 20px;
+    }
+    .modal.open { display: flex; }
+    .modal-card {
+      width: min(100%, 520px);
+      background: rgba(255,255,255,0.98);
+      border-radius: 14px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.65);
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 18px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .modal-header h3 { color: #4338ca; font-size: 1.1rem; }
+    .modal-close {
+      border: none;
+      background: transparent;
+      color: #64748b;
+      font-size: 1.6rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .modal-body { padding: 16px 18px; }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 18px 18px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .modal-help { color: #64748b; font-size: 0.92rem; margin-bottom: 12px; }
+    .modal-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .modal-grid .span-2 { grid-column: 1 / -1; }
+    @media (max-width: 860px) {
+      .modal-grid { grid-template-columns: 1fr; }
+    }
     @media (max-width: 860px) {
       .grid, .grid-2 { grid-template-columns: 1fr; }
       .header { flex-direction: column; align-items: flex-start; }
@@ -156,9 +207,69 @@
     </div>
   </div>
 
+  <div id="editUserModal" class="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editUserModalTitle">
+      <div class="modal-header">
+        <h3 id="editUserModalTitle">Edit User</h3>
+        <button class="modal-close" id="closeEditUserModal" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-help">Update user details and optionally set a new access code.</p>
+        <div class="modal-grid">
+          <input id="editUserName" class="input span-2" placeholder="Name">
+          <select id="editUserRole" class="input">
+            <option value="viewer">Viewer</option>
+            <option value="editor">Editor</option>
+            <option value="admin">Admin</option>
+          </select>
+          <input id="editUserCode" class="input" maxlength="4" placeholder="New code (optional)">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="cancelEditUserBtn" class="btn btn-secondary">Cancel</button>
+        <button id="saveEditUserBtn" class="btn btn-primary">Save User</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="deleteUserModal" class="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteUserModalTitle">
+      <div class="modal-header">
+        <h3 id="deleteUserModalTitle">Remove User</h3>
+        <button class="modal-close" id="closeDeleteUserModal" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="deleteUserModalText" class="modal-help">Are you sure you want to remove this user?</p>
+      </div>
+      <div class="modal-actions">
+        <button id="cancelDeleteUserBtn" class="btn btn-secondary">Cancel</button>
+        <button id="confirmDeleteUserBtn" class="btn btn-danger">Remove User</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="deleteDataModal" class="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteDataModalTitle">
+      <div class="modal-header">
+        <h3 id="deleteDataModalTitle">Confirm Delete All Data</h3>
+        <button class="modal-close" id="closeDeleteDataModal" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-help">Enter delete password to permanently remove all portfolio data.</p>
+        <input id="deleteDataPassword" class="input" type="password" placeholder="Delete password">
+      </div>
+      <div class="modal-actions">
+        <button id="cancelDeleteDataBtn" class="btn btn-secondary">Cancel</button>
+        <button id="confirmDeleteDataBtn" class="btn btn-danger">Delete All Data</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let highlights = [];
     let allUserActivity = [];
+    let pendingEditUserId = '';
+    let pendingDeleteUser = null;
 
     function showSuccess(message) {
       const successEl = document.getElementById('successMessage');
@@ -329,19 +440,49 @@
       }
     }
 
-    async function editAccessUser(userId, userName, userRole) {
-      const nextName = prompt('Update user name:', userName || '');
-      if (nextName === null) return;
+    function openModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (!modal) return;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    }
 
-      const nextRole = prompt('Update role (viewer/editor/admin):', userRole || 'viewer');
-      if (nextRole === null) return;
+    function closeModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (!modal) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
 
-      const nextCode = prompt('New 4-digit code (leave empty to keep current):', '');
-      if (nextCode === null) return;
+    function openEditUserModal(userId, userName, userRole) {
+      pendingEditUserId = String(userId || '');
+      document.getElementById('editUserName').value = String(userName || '');
+      document.getElementById('editUserRole').value = String(userRole || 'viewer').toLowerCase();
+      document.getElementById('editUserCode').value = '';
+      openModal('editUserModal');
+      document.getElementById('editUserName').focus();
+    }
 
-      const payload = { name: nextName.trim(), role: String(nextRole).trim().toLowerCase() };
-      if (nextCode.trim()) {
-        payload.code = nextCode.trim();
+    function closeEditUserModal() {
+      pendingEditUserId = '';
+      document.getElementById('editUserName').value = '';
+      document.getElementById('editUserRole').value = 'viewer';
+      document.getElementById('editUserCode').value = '';
+      closeModal('editUserModal');
+    }
+
+    async function submitEditUser() {
+      if (!pendingEditUserId) {
+        return;
+      }
+
+      const nextName = String(document.getElementById('editUserName').value || '').trim();
+      const nextRole = String(document.getElementById('editUserRole').value || 'viewer').trim().toLowerCase();
+      const nextCode = String(document.getElementById('editUserCode').value || '').trim();
+
+      const payload = { name: nextName, role: nextRole };
+      if (nextCode) {
+        payload.code = nextCode;
       }
 
       if (!payload.name) {
@@ -349,8 +490,13 @@
         return;
       }
 
+      if (nextCode && !/^\d{4}$/.test(nextCode)) {
+        showError('New code must be exactly 4 digits.');
+        return;
+      }
+
       try {
-        const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
+        const response = await fetch(`/api/access-users/${encodeURIComponent(pendingEditUserId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -363,6 +509,7 @@
           return;
         }
 
+        closeEditUserModal();
         showSuccess('User updated.');
         await loadAccessUsers();
       } catch (error) {
@@ -371,13 +518,24 @@
       }
     }
 
-    async function deleteAccessUser(userId, userName) {
-      if (!confirm(`Remove ${userName}?`)) {
+    function openDeleteUserModal(userId, userName) {
+      pendingDeleteUser = { userId: String(userId || ''), userName: String(userName || 'User') };
+      document.getElementById('deleteUserModalText').textContent = `Remove ${pendingDeleteUser.userName}?`;
+      openModal('deleteUserModal');
+    }
+
+    function closeDeleteUserModal() {
+      pendingDeleteUser = null;
+      closeModal('deleteUserModal');
+    }
+
+    async function confirmDeleteUser() {
+      if (!pendingDeleteUser?.userId) {
         return;
       }
 
       try {
-        const response = await fetch(`/api/access-users/${encodeURIComponent(userId)}`, {
+        const response = await fetch(`/api/access-users/${encodeURIComponent(pendingDeleteUser.userId)}`, {
           method: 'DELETE',
           credentials: 'include'
         });
@@ -388,6 +546,7 @@
           return;
         }
 
+        closeDeleteUserModal();
         showSuccess('User removed.');
         await loadAccessUsers();
       } catch (error) {
@@ -543,9 +702,21 @@
       }
     }
 
+    function openDeleteDataModal() {
+      document.getElementById('deleteDataPassword').value = '';
+      openModal('deleteDataModal');
+      document.getElementById('deleteDataPassword').focus();
+    }
+
+    function closeDeleteDataModal() {
+      document.getElementById('deleteDataPassword').value = '';
+      closeModal('deleteDataModal');
+    }
+
     async function deleteAllData() {
-      const password = prompt('Enter delete password to confirm deleting all portfolio data:');
+      const password = String(document.getElementById('deleteDataPassword').value || '').trim();
       if (!password) {
+        showError('Delete password is required.');
         return;
       }
 
@@ -563,6 +734,7 @@
           return;
         }
 
+        closeDeleteDataModal();
         showSuccess('All portfolio data deleted. Redirecting...');
         setTimeout(() => { window.location.href = '/pages/main.html'; }, 1500);
       } catch (error) {
@@ -575,7 +747,16 @@
     document.getElementById('saveHighlightsBtn').addEventListener('click', saveHighlights);
     document.getElementById('addAccessUserBtn').addEventListener('click', createAccessUser);
     document.getElementById('saveDeletePasswordBtn').addEventListener('click', saveDeletePassword);
-    document.getElementById('deleteAllDataBtn').addEventListener('click', deleteAllData);
+    document.getElementById('deleteAllDataBtn').addEventListener('click', openDeleteDataModal);
+    document.getElementById('closeEditUserModal').addEventListener('click', closeEditUserModal);
+    document.getElementById('cancelEditUserBtn').addEventListener('click', closeEditUserModal);
+    document.getElementById('saveEditUserBtn').addEventListener('click', submitEditUser);
+    document.getElementById('closeDeleteUserModal').addEventListener('click', closeDeleteUserModal);
+    document.getElementById('cancelDeleteUserBtn').addEventListener('click', closeDeleteUserModal);
+    document.getElementById('confirmDeleteUserBtn').addEventListener('click', confirmDeleteUser);
+    document.getElementById('closeDeleteDataModal').addEventListener('click', closeDeleteDataModal);
+    document.getElementById('cancelDeleteDataBtn').addEventListener('click', closeDeleteDataModal);
+    document.getElementById('confirmDeleteDataBtn').addEventListener('click', deleteAllData);
     document.getElementById('userActivityActionFilter').addEventListener('change', () => {
       renderUserActivity(allUserActivity);
     });
@@ -603,12 +784,23 @@
       const userRole = button.getAttribute('data-user-role') || 'viewer';
 
       if (action === 'edit-user') {
-        editAccessUser(userId, userName, userRole);
+        openEditUserModal(userId, userName, userRole);
       }
 
       if (action === 'delete-user') {
-        deleteAccessUser(userId, userName);
+        openDeleteUserModal(userId, userName);
       }
+    });
+
+    ['editUserModal', 'deleteUserModal', 'deleteDataModal'].forEach((modalId) => {
+      const modal = document.getElementById(modalId);
+      if (!modal) return;
+      modal.addEventListener('click', (event) => {
+        if (event.target !== modal) return;
+        if (modalId === 'editUserModal') closeEditUserModal();
+        if (modalId === 'deleteUserModal') closeDeleteUserModal();
+        if (modalId === 'deleteDataModal') closeDeleteDataModal();
+      });
     });
 
     document.addEventListener('DOMContentLoaded', async () => {
