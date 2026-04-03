@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Portfolio</title>
+  <link rel="stylesheet" href="/chat-widget.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+      padding: 24px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    .header, .section {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      margin-bottom: 16px;
+    }
+    .header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .header h1 { color: #667eea; font-size: 2rem; }
+    .back-btn, .btn {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .back-btn, .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+    }
+    .btn-secondary {
+      background: #eef2ff;
+      color: #4338ca;
+    }
+    h2 { color: #4c51bf; margin-bottom: 16px; }
+    .setting-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; color: #555; margin-bottom: 8px; }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .setting-group { flex: 1; }
+    .checkbox-group { display: flex; align-items: center; gap: 10px; }
+    .checkbox-group input { width: auto; }
+    .btn-row { display: flex; gap: 12px; }
+    .message {
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .success { background: #dcfce7; color: #166534; }
+    .error { background: #fee2e2; color: #991b1b; }
+    .hint { color: #64748b; font-size: 0.95rem; }
+    @media (max-width: 768px) {
+      .form-row { flex-direction: column; }
+      .header { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Settings</h1>
+      <a href="/pages/main.html" class="back-btn">← Back to Portfolio</a>
+    </div>
+
+    <div id="successMessage" class="message success"></div>
+    <div id="errorMessage" class="message error"></div>
+
+    <div class="section">
+      <h2>Access Code</h2>
+      <p class="hint" style="margin-bottom: 16px;">Change your own 4-digit access code.</p>
+      <div class="setting-group">
+        <label for="currentCode">Current Access Code</label>
+        <input type="password" id="currentCode" maxlength="4" pattern="\d{4}" placeholder="Current code">
+      </div>
+      <div class="form-row">
+        <div class="setting-group">
+          <label for="newCode">New Access Code</label>
+          <input type="password" id="newCode" maxlength="4" pattern="\d{4}" placeholder="New code">
+        </div>
+        <div class="setting-group">
+          <label for="confirmCode">Confirm New Access Code</label>
+          <input type="password" id="confirmCode" maxlength="4" pattern="\d{4}" placeholder="Confirm new code">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button id="saveCodeBtn" class="btn btn-primary">Update Access Code</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Preferences</h2>
+      <div class="setting-group checkbox-group">
+        <input type="checkbox" id="twoFactor">
+        <label for="twoFactor">Enable two-factor authentication (local preference)</label>
+      </div>
+      <div class="btn-row">
+        <button id="saveSettings" class="btn btn-primary">Save Settings</button>
+        <button id="resetSettings" class="btn btn-secondary">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showSuccess(message) {
+      const el = document.getElementById('successMessage');
+      const errorEl = document.getElementById('errorMessage');
+      el.textContent = message;
+      el.style.display = 'block';
+      errorEl.style.display = 'none';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    function showError(message) {
+      const el = document.getElementById('errorMessage');
+      const successEl = document.getElementById('successMessage');
+      el.textContent = message;
+      el.style.display = 'block';
+      successEl.style.display = 'none';
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function getDefaultSettings() {
+      return { twoFactor: false };
+    }
+
+    function loadSettings() {
+      const settings = JSON.parse(localStorage.getItem('userSettings')) || getDefaultSettings();
+      document.getElementById('twoFactor').checked = !!settings.twoFactor;
+    }
+
+    function saveSettings() {
+      const settings = {
+        twoFactor: document.getElementById('twoFactor').checked,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('userSettings', JSON.stringify(settings));
+      showSuccess('Settings saved successfully.');
+    }
+
+    function resetSettings() {
+      localStorage.setItem('userSettings', JSON.stringify(getDefaultSettings()));
+      loadSettings();
+      showSuccess('Settings reset to defaults.');
+    }
+
+    async function changeAccessCode() {
+      const currentCode = document.getElementById('currentCode').value.trim();
+      const newCode = document.getElementById('newCode').value.trim();
+      const confirmCode = document.getElementById('confirmCode').value.trim();
+
+      if (!/^\d{4}$/.test(currentCode) || !/^\d{4}$/.test(newCode)) {
+        showError('Both current and new code must be exactly 4 digits.');
+        return;
+      }
+
+      if (newCode !== confirmCode) {
+        showError('New access codes do not match.');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/change-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ currentCode, newCode, confirmCode })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          showError(result.error || 'Failed to update access code.');
+          return;
+        }
+
+        document.getElementById('currentCode').value = '';
+        document.getElementById('newCode').value = '';
+        document.getElementById('confirmCode').value = '';
+        showSuccess('Access code updated successfully.');
+      } catch (error) {
+        console.error('Error changing code:', error);
+        showError('Network error. Please try again.');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const meResponse = await fetch('/api/me', { credentials: 'include' });
+        if (!meResponse.ok) {
+          window.location.href = '/';
+          return;
+        }
+      } catch {
+        window.location.href = '/';
+        return;
+      }
+
+      loadSettings();
+      document.getElementById('saveCodeBtn').addEventListener('click', changeAccessCode);
+      document.getElementById('saveSettings').addEventListener('click', saveSettings);
+      document.getElementById('resetSettings').addEventListener('click', resetSettings);
+    });
+  </script>
+  <script src="/chat-widget.js"></script>
+</body>
+</html>

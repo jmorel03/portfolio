@@ -65,6 +65,23 @@ const ROLE_LEVEL = {
   admin: 3
 };
 
+function assetRequest(request, pathnameOverride) {
+  const url = new URL(request.url);
+  if (pathnameOverride) {
+    url.pathname = pathnameOverride;
+  }
+
+  return new Request(url.toString(), request);
+}
+
+async function fetchAsset(request, env, pathnameOverride) {
+  if (!env.ASSETS) {
+    return new Response('Static asset binding not configured', { status: 500 });
+  }
+
+  return env.ASSETS.fetch(assetRequest(request, pathnameOverride));
+}
+
 function normalizeRole(role) {
   const value = String(role || '').toLowerCase();
   return ROLE_LEVEL[value] ? value : 'viewer';
@@ -1723,32 +1740,14 @@ export default {
       if (!session) {
         return Response.redirect(`${new URL(request.url).origin}/`, 302);
       }
-      // Serve the latest main.html from your repo
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/main.html')
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (html) {
-            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-          } else {
-            return new Response('main.html not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
     if (path === '/pages/settings.html') {
       const session = await getSessionFromRequest(request, env);
       if (!session) {
         return Response.redirect(`${new URL(request.url).origin}/`, 302);
       }
-      // Serve the latest settings.html from your repo
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/settings.html')
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (html) {
-            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-          } else {
-            return new Response('settings.html not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     if (path === '/pages/admin.html') {
@@ -1757,27 +1756,11 @@ export default {
         return Response.redirect(`${new URL(request.url).origin}/pages/main.html`, 302);
       }
 
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/admin.html')
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (html) {
-            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-          } else {
-            return new Response('admin.html not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     if (path === '/pages/highlights.html') {
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/highlights.html')
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (html) {
-            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-          } else {
-            return new Response('highlights.html not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     if (path === '/pages/thread.html') {
@@ -1786,76 +1769,27 @@ export default {
         return Response.redirect(`${new URL(request.url).origin}/`, 302);
       }
 
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/pages/thread.html')
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (html) {
-            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-          } else {
-            return new Response('thread.html not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     if (path === '/' || path === '/index.html') {
-      // Serve the latest index.html from your repo
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/index.html')
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (html) {
-            return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-          } else {
-            return new Response('index.html not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env, '/index.html');
     }
 
     // Serve static assets
     if (path === '/styles.css') {
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/styles.css')
-        .then(r => r.ok ? r.text() : null)
-        .then(css => {
-          if (css) {
-            return new Response(css, { status: 200, headers: { 'Content-Type': 'text/css; charset=utf-8' } });
-          } else {
-            return new Response('styles.css not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
     if (path === '/script.js') {
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/script.js')
-        .then(r => r.ok ? r.text() : null)
-        .then(js => {
-          if (js) {
-            return new Response(js, { status: 200, headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
-          } else {
-            return new Response('script.js not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     if (path === '/chat-widget.css') {
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/chat-widget.css')
-        .then(r => r.ok ? r.text() : null)
-        .then(css => {
-          if (css) {
-            return new Response(css, { status: 200, headers: { 'Content-Type': 'text/css; charset=utf-8' } });
-          } else {
-            return new Response('chat-widget.css not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     if (path === '/chat-widget.js') {
-      return fetch('https://raw.githubusercontent.com/' + (env.GITHUB_REPO || 'your/repo') + '/main/chat-widget.js')
-        .then(r => r.ok ? r.text() : null)
-        .then(js => {
-          if (js) {
-            return new Response(js, { status: 200, headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
-          } else {
-            return new Response('chat-widget.js not found', { status: 404 });
-          }
-        });
+      return fetchAsset(request, env);
     }
 
     return new Response('Not Found', { status: 404 });
