@@ -46,6 +46,90 @@ function sanitizeFileName(fileName) {
     .slice(0, 80) || 'upload';
 }
 
+function inferFolderType(meta = {}, fileKey = '') {
+  const fileName = String(meta.fileName || fileKey).toLowerCase();
+  const contentType = String(meta.contentType || '').toLowerCase();
+
+  if (contentType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|tiff)$/i.test(fileName)) {
+    return 'Photos';
+  }
+
+  if (contentType.startsWith('video/') || /\.(mp4|avi|mov|mkv|wmv|flv|webm|m4v)$/i.test(fileName)) {
+    return 'Videos';
+  }
+
+  return 'Files';
+}
+
+function getRecoveredFolderName(type) {
+  if (type === 'Photos') {
+    return 'Recovered Photos';
+  }
+
+  if (type === 'Videos') {
+    return 'Recovered Videos';
+  }
+
+  return 'Recovered Files';
+}
+
+async function listAllR2Objects(env) {
+  if (!env.PORTFOLIO_R2) {
+    return [];
+  }
+
+  const objects = [];
+  let cursor = undefined;
+
+  do {
+    const result = await env.PORTFOLIO_R2.list({ cursor, limit: 1000 });
+    objects.push(...(Array.isArray(result?.objects) ? result.objects : []));
+    cursor = result?.truncated ? result.cursor : undefined;
+  } while (cursor);
+
+  return objects;
+}
+
+async function rebuildPortfolioDataFromR2(env) {
+  if (!env.PORTFOLIO_R2) {
+    throw new Error('R2 binding missing');
+  }
+
+  const objects = await listAllR2Objects(env);
+  const fileKeys = objects
+    .map((object) => String(object?.key || ''))
+    .filter((key) => key.startsWith(FILE_KEY_PREFIX) && !key.endsWith(':meta'));
+
+  const foldersByType = new Map();
+
+  for (const fileKey of fileKeys) {
+    const meta = await getFileMeta(env, fileKey);
+    const type = inferFolderType(meta, fileKey);
+    const folderName = getRecoveredFolderName(type);
+
+    if (!foldersByType.has(type)) {
+      foldersByType.set(type, {
+        name: folderName,
+        type,
+        files: []
+      });
+    }
+
+    const fileName = String(meta.fileName || fileKey.replace(/^file:[^-]+-/, '') || 'Recovered file').trim() || 'Recovered file';
+    foldersByType.get(type).files.push({
+      name: fileName,
+      content: `/api/files/${encodeURIComponent(fileKey)}`
+    });
+  }
+
+  const folders = ['Files', 'Photos', 'Videos']
+    .map((type) => foldersByType.get(type))
+    .filter((folder) => folder && folder.files.length > 0);
+
+  await savePortfolioData(env, folders);
+  return { folders, recoveredFiles: fileKeys.length };
+}
+
 const PORTFOLIO_DATA_KEY = 'portfolio:data:v1';
 const FILE_KEY_PREFIX = 'file:';
 const AUTH_CODE_KEY = 'auth:code:v1';
@@ -1415,6 +1499,40 @@ export default {
         });
       } catch (error) {
         return new Response(JSON.stringify({ error: 'Failed to save data' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    if (path === '/api/admin/recover-r2' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (!session) {
+        return unauthorizedResponse();
+      }
+
+      if (!hasRole(session.role, 'admin')) {
+        return forbiddenResponse();
+      }
+
+      try {
+        const result = await rebuildPortfolioDataFromR2(env);
+        await appendUserActivity(env, request, session, {
+          action: 'restore',
+          target: `${result.recoveredFiles} file(s)`,
+          details: 'Rebuilt portfolio folders from R2 objects'
+        });
+
+        return new Response(JSON.stringify({
+          ok: true,
+          recoveredFiles: result.recoveredFiles,
+          folders: result.folders
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to rebuild portfolio data from R2' }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
         });

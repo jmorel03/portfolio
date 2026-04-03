@@ -202,6 +202,7 @@
         <button id="saveDeletePasswordBtn" class="btn btn-secondary">Set / Change Delete Password</button>
       </div>
       <div class="btn-row" style="margin-top:12px;">
+        <button id="recoverR2DataBtn" class="btn btn-secondary">Recover Portfolio From R2</button>
         <button id="deleteAllDataBtn" class="btn btn-danger">Delete All Portfolio Data</button>
       </div>
     </div>
@@ -743,10 +744,36 @@
       }
     }
 
+    async function recoverPortfolioFromR2() {
+      const confirmed = window.confirm('Rebuild portfolio folders from files currently stored in R2? This replaces the current folder tree metadata.');
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/admin/recover-r2', {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showError(result.error || 'Failed to recover data from R2.');
+          return;
+        }
+
+        showSuccess(`Recovered ${result.recoveredFiles || 0} file(s) into ${Array.isArray(result.folders) ? result.folders.length : 0} folder(s).`);
+      } catch (error) {
+        console.error('Error recovering data from R2:', error);
+        showError('Network error while recovering data from R2.');
+      }
+    }
+
     document.getElementById('addHighlightBtn').addEventListener('click', addHighlight);
     document.getElementById('saveHighlightsBtn').addEventListener('click', saveHighlights);
     document.getElementById('addAccessUserBtn').addEventListener('click', createAccessUser);
     document.getElementById('saveDeletePasswordBtn').addEventListener('click', saveDeletePassword);
+    document.getElementById('recoverR2DataBtn').addEventListener('click', recoverPortfolioFromR2);
     document.getElementById('deleteAllDataBtn').addEventListener('click', openDeleteDataModal);
     document.getElementById('closeEditUserModal').addEventListener('click', closeEditUserModal);
     document.getElementById('cancelEditUserBtn').addEventListener('click', closeEditUserModal);
